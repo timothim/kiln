@@ -3,11 +3,22 @@ name = "kiln_trainer"
 version = "0.1.0"
 description = "Kiln's Python sidecar — wraps MLX-LM for LoRA SFT/DPO, fuse, and generation. Speaks JSON-lines over stdio to the Swift app."
 requires-python = ">=3.11,<3.12"
-readme = { text = "Populated at M1 — see SPEC §4.3 and .claude/skills/mlx-lora-finetuning/.", content-type = "text/plain" }
+readme = { text = """
+Python 3.11 sidecar that wraps mlx-lm for Kiln's local LoRA SFT, one-off
+generation, and Ollama export. Speaks JSON-lines over stdout/stderr — see
+SPEC.md §11.1 for the event schema and `.claude/skills/mlx-lora-finetuning/`
+for operational details. Local DECISIONS.md logs mlx-lm flag deviations.
+
+Entry point: `python -m kiln_trainer <train|sample|export> ...`.
+""", content-type = "text/plain" }
 license = { text = "MIT" }
 authors = [{ name = "Kiln" }]
-# Runtime deps land in M1 (mlx, mlx-lm, safetensors, sentencepiece). M0 is scaffold-only.
-dependencies = []
+dependencies = [
+    "mlx-lm==0.21.*",
+    "mlx>=0.22,<0.23",
+    "safetensors",
+    "sentencepiece",
+]
 
 [build-system]
 requires = ["hatchling"]
