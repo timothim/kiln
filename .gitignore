@@ -20,6 +20,9 @@ DerivedData/
 *.xcscmblueprint
 *.xcscheme
 
+## xcodegen output — the YAML (project.yml) is the source of truth
+apps/**/*.xcodeproj/
+
 ## SwiftPM
 .build/
 Package.resolved
