@@ -1,0 +1,30 @@
+{
+  "title": "Refactoring the ingest pipeline",
+  "create_time": 1711843200,
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'm refactoring the ingest pipeline. Currently it reads the whole folder into memory before dedup. I want to stream it. Worth it?"
+    },
+    {
+      "role": "assistant",
+      "content": "Depends on the sizes you expect. If corpora stay under ~2 GB, the in-memory version is simpler and fast enough. Over that, streaming matters — both for memory pressure and for letting the UI show progress earlier."
+    },
+    {
+      "role": "user",
+      "content": "Target is user folders. So anywhere from 50 MB to 20 GB. Streaming then."
+    },
+    {
+      "role": "assistant",
+      "content": "Agreed. Structure it as a pull iterator per source type (markdown, json chat, code) feeding a shared dedup stage. Keep the quality filter at the end; it's the expensive one and dedup kills most of its input."
+    },
+    {
+      "role": "user",
+      "content": "Good. And the dedup — exact first, then shingle?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes. Exact is cheap and kills ~30% typically. Shingle MinHash on what remains. Keep both stats visible in the Dataset Doctor; users like seeing what got cut."
+    }
+  ]
+}

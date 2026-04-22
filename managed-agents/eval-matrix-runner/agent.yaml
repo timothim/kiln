@@ -1,0 +1,72 @@
+# Kiln — Eval Matrix Runner Managed Agent
+# Reference schema: https://claude.com/blog/claude-managed-agents
+
+apiVersion: claude.com/v1
+kind: ManagedAgent
+metadata:
+  name: eval-matrix-runner
+  project: kiln
+  version: 0.1.0
+  owner: kiln-team
+  description: >
+    Nightly regression eval of the current Kiln adapter. Computes perplexity,
+    preference-judge win-rate vs base, three fixed-prompt samples, and
+    latency. Emits a markdown report and opens an issue on regression.
+
+spec:
+  model: claude-opus-4-7
+  maxRuntimeMinutes: 90
+
+  # This agent only talks to the GitHub MCP (to open regression issues).
+  # All model inference happens on the user's Mac via the sidecar — the
+  # managed agent orchestrates and reports, it does not run MLX.
+  mcpServers:
+    - name: github
+      scope: [issues-write, read]
+      optional: false
+
+  systemPrompt: |
+    You are the Kiln Eval Matrix Runner. Each night you run the five metrics
+    against the latest adapter, write a dated markdown report, update the
+    latest-pointer and the trend JSON, and — if a headline metric regressed
+    beyond threshold — open a GitHub issue with the diff.
+
+  tools:
+    - file_write
+    - file_read
+    - subagent
+    - shell            # to invoke the local sidecar via SSH trampoline (configured externally)
+
+  subagents:
+    - name: run-metrics
+      prompt: |
+        Invoke the Kiln sidecar with each of: --eval perplexity,
+        --eval winrate, --prompt <p1|p2|p3>, --bench latency. Collect JSON
+        outputs, aggregate.
+    - name: write-report
+      prompt: |
+        Produce docs/eval/<today>.md with a concise summary: headline
+        numbers, delta vs previous run, three-prompt samples. Update
+        docs/eval/latest.md. Append to docs/eval/trend.json.
+    - name: regression-triage
+      prompt: |
+        Compare today's winrate_vs_base and perplexity_held_out to the most
+        recent green run. If winrate drops >2% or perplexity drops >5%,
+        open a GitHub issue tagged eval-regression with the diff, the three
+        sample outputs, and the likely cause (most recent merged PR).
+
+  outputs:
+    - path: docs/eval/<date>.md
+    - path: docs/eval/latest.md
+    - path: docs/eval/trend.json
+
+  state:
+    file: state.json
+
+  policy:
+    writeScope: reportsAndTrend
+    networkScope: mcpOnly
+
+  schedule:
+    cron: "0 2 * * *"
+    enabled: true

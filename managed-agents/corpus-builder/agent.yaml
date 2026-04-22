@@ -1,0 +1,102 @@
+# Kiln — Corpus Builder Managed Agent
+# Reference schema: https://claude.com/blog/claude-managed-agents
+# The concrete schema version is pinned once Anthropic publishes the spec file;
+# fields below follow the documented public surface as of the hackathon.
+
+apiVersion: claude.com/v1
+kind: ManagedAgent
+metadata:
+  name: corpus-builder
+  project: kiln
+  version: 0.1.0
+  owner: kiln-team
+  description: >
+    Pulls the user's authorized content from Gmail, Notion, GitHub, and Slack
+    via MCP servers, normalizes to JSONL, and writes to the user's local
+    Kiln corpus folder. Resumable; runs on demand or on schedule.
+
+spec:
+  model: claude-opus-4-7
+  maxRuntimeMinutes: 360
+
+  # MCP servers this agent is allowed to call. Each is optional; missing
+  # connectors are skipped gracefully.
+  mcpServers:
+    - name: gmail
+      scope: [readonly, sent-only]
+      optional: true
+    - name: notion
+      scope: [readonly]
+      optional: true
+    - name: github
+      scope: [readonly, user-authored]
+      optional: true
+    - name: slack
+      scope: [readonly, dms-authored-by-user]
+      optional: true
+
+  # System prompt is the agent's operating charter. Kept short; detail lives
+  # in the README and in the per-source subagent prompts.
+  systemPrompt: |
+    You are the Kiln Corpus Builder. Your job is to pull the user's own
+    writing from connected cloud sources, normalize each item to a single
+    JSONL row, and write to the destination folder. You never modify source
+    content. You never hallucinate content. If a source is empty or the
+    connector is unhealthy, you log and continue. You update the
+    per-source cursor after each successful batch so the next run resumes.
+
+  # Tools the agent is allowed to call beyond MCP servers.
+  tools:
+    - file_write   # writes JSONL to the destination folder
+    - file_read    # reads the resumable state cursor
+    - subagent     # spawns per-source subagents
+
+  # Per-source subagents. Each runs the same loop on a different MCP.
+  subagents:
+    - name: gmail-pull
+      from: gmail
+      prompt: |
+        Pull messages authored by the user in the time window. Normalize each
+        to {source, timestamp, text, source_id}. Skip promotional, auto-reply,
+        and bounce messages. Strip quoted replies from the body.
+    - name: notion-pull
+      from: notion
+      prompt: |
+        Pull blocks and short docs authored by the user. Each row is one
+        coherent unit — a paragraph, a bullet block group, a doc ≥ 40 words.
+    - name: github-pull
+      from: github
+      prompt: |
+        Pull PR descriptions and issue comments authored by the user. Skip
+        auto-generated content, bot replies, CI status comments.
+    - name: slack-pull
+      from: slack
+      prompt: |
+        Pull DMs authored by the user across connected workspaces. Never pull
+        channel messages without explicit scope; DMs only.
+
+  outputs:
+    - path: gmail.jsonl
+    - path: notion.jsonl
+    - path: github.jsonl
+    - path: slack.jsonl
+
+  # Where output lands. On the user's Mac, outside the repo.
+  destination:
+    type: local
+    path: "~/Library/Application Support/Kiln/corpus/"
+
+  # State file for resumption.
+  state:
+    file: state.json
+
+  # Safety / policy.
+  policy:
+    writeScope: destinationOnly
+    networkScope: mcpOnly
+    redactPII: true
+
+  # Scheduling (optional; activated via `claude agents schedule`).
+  schedule:
+    cron: "0 */6 * * *"
+    enabled: false

@@ -1,0 +1,26 @@
+{
+  "schema": "kiln.imessage.v1",
+  "exported_at": "2026-04-10T18:32:00Z",
+  "threads": [
+    {
+      "handle": "+15555550142",
+      "display_name": "Sam",
+      "messages": [
+        {"ts": "2026-04-10T09:14:00Z", "from": "me", "text": "morning"},
+        {"ts": "2026-04-10T09:15:10Z", "from": "sam", "text": "morning — did you see the eval results?"},
+        {"ts": "2026-04-10T09:16:02Z", "from": "me", "text": "yes. we're above bar on quality-classifier. preference-judge is still a few points short."},
+        {"ts": "2026-04-10T09:17:20Z", "from": "sam", "text": "more labels?"},
+        {"ts": "2026-04-10T09:18:00Z", "from": "me", "text": "more labels, and re-examine the tie cases. I think we're labeling too many ties."}
+      ]
+    },
+    {
+      "handle": "+15555550199",
+      "display_name": "Priya",
+      "messages": [
+        {"ts": "2026-04-11T14:05:00Z", "from": "priya", "text": "lunch?"},
+        {"ts": "2026-04-11T14:05:40Z", "from": "me", "text": "yes. 12:30, the place across the street."},
+        {"ts": "2026-04-11T14:06:02Z", "from": "priya", "text": "done"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Picking a base model",
+  "create_time": 1712361600,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Qwen 2.5 3B vs Llama 3.2 3B for the default. Any real difference for fine-tuning on personal writing?"
+    },
+    {
+      "role": "assistant",
+      "content": "Both work. Qwen's license is cleaner (Apache 2.0) which matters for an open-source submission. Llama 3.2's license has restrictions on downstream commercial use that muddy the waters."
+    },
+    {
+      "role": "user",
+      "content": "License decides it then. Done."
+    },
+    {
+      "role": "assistant",
+      "content": "Worth recording why in DECISIONS.md — the reasoning isn't obvious from the code alone."
+    }
+  ]
+}

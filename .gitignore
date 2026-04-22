@@ -1,0 +1,117 @@
+# Kiln .gitignore — Swift + Python + macOS + Xcode
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+Icon?
+
+# --- Xcode / Swift ---
+## Build artifacts
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xcscheme
+
+## SwiftPM
+.build/
+Package.resolved
+.swiftpm/
+.swift-version
+
+## Swift formatter/linter caches
+.swiftformat-cache/
+.swiftlint-cache/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+*.whl
+
+## Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+## uv
+.uv-cache/
+
+# --- Editor / IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Secrets / config (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.yaml
+secrets.yml
+secrets.json
+
+# --- Kiln-specific ---
+
+## Raw Opus labels from the distillation pipeline.
+## The trained artifact (manifest.json, model.*) IS committed; the raw labels are not.
+distilled/*/raw_labels.jsonl
+distilled/*/run_manifest.json
+distilled/*/labels_cache/
+
+## Training run outputs — large, per-user, reproducible.
+runs/
+checkpoints/
+adapters/
+fused/
+*.safetensors
+!distilled/*/model.safetensors
+*.gguf
+
+## Caches
+.cache/
+.kiln/
+~/.cache/huggingface/
+
+## Session artifacts
+.claude/reviews/
+.kiln-last-test-status
+
+## Demo assets we regenerate
+docs/demo/raw/
+docs/demo/takes/
+docs/eval/2*.md
+!docs/eval/latest.md
+
+## Managed Agent local state
+managed-agents/*/state/
+managed-agents/*/.cursor
+
+## Logs
+*.log
+logs/
+
+## OS-specific transient
+*.dmg
+*.pkg

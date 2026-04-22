@@ -1,0 +1,123 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  swift:
+    name: Swift (macOS)
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app || true
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Lint (swift-format)
+        run: |
+          if command -v swift-format >/dev/null 2>&1; then
+            swift-format lint -r packages/KilnCore apps/Kiln || true
+          else
+            echo "swift-format not available; skipping lint"
+          fi
+
+      - name: Build
+        run: |
+          if [ -f packages/KilnCore/Package.swift ]; then
+            cd packages/KilnCore && swift build -c release
+          else
+            echo "(KilnCore package not initialized yet — skipping build)"
+          fi
+
+      - name: Test
+        run: |
+          if [ -f packages/KilnCore/Package.swift ] && [ -d packages/KilnCore/Tests ]; then
+            cd packages/KilnCore && swift test
+          else
+            echo "(KilnCore tests not present yet — skipping)"
+          fi
+
+  python:
+    name: Python (ubuntu, sidecar)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff + pytest
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+
+      - name: Ruff
+        run: |
+          if [ -d packages/kiln_trainer ]; then
+            ruff check packages/kiln_trainer scripts || true
+            ruff format --check packages/kiln_trainer scripts || true
+          fi
+
+      - name: Pytest
+        run: |
+          if [ -d packages/kiln_trainer/tests ]; then
+            cd packages/kiln_trainer && pytest -q
+          else
+            echo "(no tests yet — skipping)"
+          fi
+
+  docs:
+    name: Repo hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Required files present
+        run: |
+          missing=0
+          for f in LICENSE README.md CLAUDE.md SPEC.md CLAUDE_USAGE.md; do
+            if [ ! -f "$f" ]; then
+              echo "!! missing required file: $f"
+              missing=1
+            fi
+          done
+          if [ $missing -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: CLAUDE_USAGE.md sprint markers (warning only)
+        run: |
+          set +e
+          hits=$(grep -c "FILL DURING SPRINT" CLAUDE_USAGE.md || true)
+          hits=${hits:-0}
+          echo "Unfilled sprint markers in CLAUDE_USAGE.md: $hits"
+          if [ "$hits" != "0" ]; then
+            echo "::warning file=CLAUDE_USAGE.md::${hits} FILL DURING SPRINT markers still present (warning; will fail on submission day)."
+          fi
+
+      - name: Runtime-purity grep (warning until M10)
+        run: |
+          set +e
+          hits=$(grep -RIn --include='*.swift' --include='*.py' -E 'api\.anthropic\.com|ANTHROPIC_API_KEY|OPENAI_API_KEY|openai\.com' apps/ packages/ 2>/dev/null | grep -v 'kiln_trainer' || true)
+          if [ -n "$hits" ]; then
+            echo "::warning::Potential runtime API references detected in apps/ or packages/ (excluding sidecar):"
+            echo "$hits"
+          fi
