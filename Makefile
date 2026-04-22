@@ -12,7 +12,7 @@ UV     ?= uv
 SWIFT  ?= swift
 
 APP_NAME := Kiln
-APP_BUNDLE := apps/$(APP_NAME)/build/Release/$(APP_NAME).app
+APP_BUNDLE := apps/$(APP_NAME)/build/Build/Products/Release/$(APP_NAME).app
 
 # --- help ---------------------------------------------------------------
 
@@ -36,9 +36,12 @@ setup:
 	  echo "!! uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
 	@command -v $(SWIFT) >/dev/null 2>&1 || { \
 	  echo "!! swift not found. Install Xcode or Xcode CLT: xcode-select --install"; exit 1; }
-	$(UV) venv --python 3.11 packages/kiln_trainer/.venv
-	cd packages/kiln_trainer && $(UV) pip sync requirements.txt || \
-	  echo "!! requirements.txt not found yet — populated at M1"
+	cd packages/kiln_trainer && $(UV) sync --group dev
+	@if command -v xcodegen >/dev/null 2>&1; then \
+	  (cd apps/Kiln && xcodegen generate); \
+	else \
+	  echo "!! xcodegen not found. Install: brew install xcodegen"; \
+	fi
 
 # --- test ---------------------------------------------------------------
 
@@ -56,8 +59,8 @@ test-swift:
 
 .PHONY: test-python
 test-python:
-	@if command -v $(PYTHON) >/dev/null 2>&1 && [ -d packages/kiln_trainer/tests ]; then \
-	  cd packages/kiln_trainer && $(PYTHON) -m pytest -q; \
+	@if [ -d packages/kiln_trainer/tests ] && command -v $(UV) >/dev/null 2>&1; then \
+	  cd packages/kiln_trainer && $(UV) run --group dev pytest -q; \
 	else \
 	  echo "(skipping python tests — kiln_trainer tests not initialized yet)"; \
 	fi
@@ -65,7 +68,7 @@ test-python:
 # --- build --------------------------------------------------------------
 
 .PHONY: build
-build: build-swift
+build: build-swift build-app
 	@echo "build complete"
 
 .PHONY: build-swift
@@ -78,6 +81,21 @@ build-swift:
 	  fi; \
 	else \
 	  echo "!! swift not found. See: xcode-select --install"; exit 1; \
+	fi
+
+.PHONY: build-app
+build-app:
+	@if [ ! -f apps/Kiln/project.yml ]; then \
+	  echo "(skipping Kiln.app build — apps/Kiln/project.yml not present)"; \
+	elif ! command -v xcodegen >/dev/null 2>&1 || ! command -v xcodebuild >/dev/null 2>&1; then \
+	  echo "(skipping Kiln.app build — xcodegen or xcodebuild not on PATH)"; \
+	else \
+	  (cd apps/Kiln && xcodegen generate >/dev/null); \
+	  xcodebuild -project apps/Kiln/Kiln.xcodeproj -scheme Kiln \
+	             -configuration Release -destination 'platform=macOS' \
+	             -derivedDataPath apps/Kiln/build \
+	             CODE_SIGNING_ALLOWED=NO build \
+	             -quiet; \
 	fi
 
 # --- run ----------------------------------------------------------------
@@ -115,6 +133,7 @@ video:
 .PHONY: clean
 clean:
 	rm -rf build/ DerivedData/ .build/ \
+	       apps/Kiln/build apps/Kiln/Kiln.xcodeproj \
 	       packages/KilnCore/.build packages/KilnCore/.swiftpm \
 	       packages/kiln_trainer/.venv packages/kiln_trainer/__pycache__ \
 	       .ruff_cache .pytest_cache .mypy_cache \
