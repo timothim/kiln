@@ -54,7 +54,7 @@ private struct SampleCard: View {
         .padding(Kiln.Space.m)
         .background(
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Kiln.Palette.firingWash)
+                .fill(Kiln.Palette.surfaceSunken)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Sample from \(sourceLabel). \(preview.assistantSnippet)")
@@ -84,7 +84,7 @@ private struct EmptySampleCard: View {
         .padding(Kiln.Space.m)
         .background(
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Kiln.Palette.firingWash)
+                .fill(Kiln.Palette.surfaceSunken)
         )
     }
 }
