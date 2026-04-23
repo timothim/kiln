@@ -120,6 +120,12 @@ managed-agents/*/.cursor
 ## Managed Agent input JSONLs — generated deterministically; do not commit raw input
 managed-agents/*/inputs/
 
+## Managed Agent run outputs — normally gitignored by the global `runs/` rule below,
+## but we opt them back in: the pilot manifest and quality-labels.jsonl are the
+## judge's primary evidence for the Managed Agents prize and belong in the repo.
+!managed-agents/*/runs/
+!managed-agents/*/runs/**
+
 ## Logs
 *.log
 logs/

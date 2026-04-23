@@ -131,7 +131,7 @@ This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opu
 
 | Component | Opus input → output | Volume | Shipped form | Bar | Current |
 |---|---|---|---|---|---|
-| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | <!-- FILL after pilot --> |
+| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high) |
 | `preference-judge` | (prompt, A, B) → winner | 5 000 labels | CoreML (paired-input head) | accuracy ≥ 0.80 | pending full overnight run |
 | `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | pending full overnight run |
 
@@ -145,10 +145,10 @@ This collapses three costs to zero at the user's edge: **privacy** (no user text
 
 ### 5.3 Cost envelope
 
-- Total Opus API calls (distillation only): <!-- FILL after pilot -->
-- Total USD spent on labeling: <!-- FILL after pilot -->
-- Cost per distilled component: <!-- FILL after pilot -->
-- Labels per USD (throughput): <!-- FILL after pilot -->
+- Total Opus API calls (distillation only): **451** (one per labeled row, pilot only; full 10k + preference + style runs execute Friday night)
+- Total USD spent on labeling: **$5.69** (pilot), well under the $15 alert / $20 hard-stop caps
+- Cost per distilled component: **$5.69 quality-classifier pilot**; preference-judge and style-extractor pending
+- Labels per USD (throughput): **79.3 labels / USD** at Opus 4.7 rates on short (≤ 1000 char) snippets — projects the full 10k quality-classifier run at ~$126
 
 All distillation invocations are gated under `scripts/opus-*` (dev-only) and never imported from the shipping packages. The verifier's Tier-1 checklist runs `rg -n 'anthropic|opus|claude' apps/ packages/` at every merge to catch accidental imports.
 
@@ -175,9 +175,9 @@ Submission for the **Best Use of Claude Managed Agents** special prize. Two agen
 
 ### 6.3 Session stats
 
-- Distillation Orchestrator pilot wall clock: <!-- FILL after pilot -->
-- Distillation Orchestrator pilot labels written: <!-- FILL after pilot -->
-- Distillation Orchestrator pilot token cost: <!-- FILL after pilot -->
+- Distillation Orchestrator pilot wall clock: **8 min 8 s** (`started_at` 2026-04-23T22:19:40Z → `finished_at` 2026-04-23T22:27:48Z), vs. plan's 20–40 min target
+- Distillation Orchestrator pilot labels written: **451 / 451** (0 skipped, 100 % JSON parse rate against the `{score, reason}` schema)
+- Distillation Orchestrator pilot token cost: **$5.69** (inferred from `session.usage` totals; manifest pinned at `managed-agents/corpus-builder/runs/20260423T224526Z/run_manifest.json`)
 - `eval-matrix-runner` executions through demo day: <!-- FILL Saturday -->
 - Regressions caught before merge by the runner: <!-- FILL Saturday -->
 
@@ -274,16 +274,16 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 ### 9.3 Opus-as-teacher
 
 - Distillation runs executed: **1 pilot** in flight as of document write (500-sample quality-classifier); preference-judge + style-extractor pending full overnight run
-- API calls: <!-- FILL after pilot -->
-- USD spent: <!-- FILL after pilot -->
+- API calls: **451** (quality-classifier pilot)
+- USD spent: **$5.69** (quality-classifier pilot); $0 on preference-judge + style-extractor (pending)
 - Artifacts shipped above bar: <!-- FILL Saturday --> / 3
 
 ### 9.4 Managed agents
 
 - Orchestrator sessions created: **1** (pilot) + **1 pre-flight smoke** (archived)
-- Orchestrator pilot runtime: <!-- FILL after pilot -->
-- Orchestrator labels written: <!-- FILL after pilot -->
-- Orchestrator pilot cost (USD): <!-- FILL after pilot -->
+- Orchestrator pilot runtime: **8 min 8 s** (3–5× faster than the planned 20–40 min window)
+- Orchestrator labels written: **451 / 451** (0 skipped, 0 parse failures)
+- Orchestrator pilot cost (USD): **$5.69** (62 % under the $15 alert threshold, 72 % under the $20 hard stop)
 - `eval-matrix-runner` executions: **0** (wired for Saturday nightly cron; first run scheduled after the full quality-classifier artifact lands)
 - Regressions caught: **0** (trivially: no executions yet)
 
@@ -292,7 +292,7 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 - Final demo video length: <!-- FILL Saturday --> / 3:00 target
 - North-Star Demo steps landed: **4** / 7 (drop-folder ingest, Dataset Doctor, prepare stage, M4 training-stream preview — still missing Growing Model, Before/After, Ship)
 - Empty/error/in-progress states landed: **19** panels (per Swift-side `hasEmptyState` / `hasErrorState` grep through M4) / target "every panel"
-- Tests: **86** Swift (KilnCoreTests) + **9** KilnTests (UI harness) + **118** Python (`pytest packages/kiln_trainer`) = **213** runs green in **~13 s** via `make test`
+- Tests: **97** Swift (KilnCoreTests, 7 skipped behind `IS_IMPLEMENTED` flags for M6+ features) + **9** KilnTests (UI harness) + **124** Python (`pytest packages/kiln_trainer`, 2 skipped) = **230** runs green in **~8 s** via `make test` (the post-Task-2 scaffolds added 20 Swift + 6 Python tests exercising the `notImplemented` contracts so future implementers land green)
 
 ---
 

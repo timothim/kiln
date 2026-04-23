@@ -1,0 +1,16 @@
+{
+  "component": "quality-classifier",
+  "run_type": "pilot",
+  "opus_model": "claude-opus-4-7",
+  "started_at": "2026-04-23T22:19:40Z",
+  "finished_at": "2026-04-23T22:27:48Z",
+  "input_count": 451,
+  "labels_written": 451,
+  "skipped_count": 0,
+  "score_distribution": {
+    "low_0_0_3": 233,
+    "mid_0_3_0_7": 94,
+    "high_0_7_1_0": 124
+  },
+  "aborted": false
+}
