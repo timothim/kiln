@@ -68,9 +68,14 @@ env/
 # --- Secrets / config (NEVER commit) ---
 .env
 .env.*
+*.env
 !.env.example
 *.pem
 *.key
+*.pat
+credentials
+credentials.*
+.secrets/
 secrets.yaml
 secrets.yml
 secrets.json
@@ -110,6 +115,9 @@ docs/eval/2*.md
 ## Managed Agent local state
 managed-agents/*/state/
 managed-agents/*/.cursor
+
+## Managed Agent input JSONLs — generated deterministically; do not commit raw input
+managed-agents/*/inputs/
 
 ## Logs
 *.log

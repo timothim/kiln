@@ -1,0 +1,9 @@
+{
+  "name": "kiln-distill-env",
+  "config": {
+    "type": "cloud",
+    "networking": {
+      "type": "unrestricted"
+    }
+  }
+}

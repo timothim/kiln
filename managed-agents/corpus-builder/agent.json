@@ -1,0 +1,14 @@
+{
+  "name": "kiln-distillation-orchestrator",
+  "model": "claude-opus-4-7",
+  "description": "Opus-as-teacher labeler for Kiln's quality-classifier distillation. The agent itself (Opus 4.7) scores snippets in its own inference loop, writes output to the container, and emits the labeled JSONL back to the caller via an agent message. Pilot: 500 samples; full run: 10,000.",
+  "tools": [
+    {"type": "agent_toolset_20260401"}
+  ],
+  "metadata": {
+    "project": "kiln",
+    "component": "quality-classifier",
+    "run_type": "pilot",
+    "owner": "timtvn"
+  }
+}

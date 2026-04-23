@@ -153,14 +153,15 @@ All distillation invocations are gated under `scripts/opus-*` (dev-only) and nev
 
 ## 6. Claude Managed Agents
 
-Submission for the **Best Use of Claude Managed Agents** special prize. Two agents live in `managed-agents/`, each as a YAML spec plus a `README.md` explaining operation. Neither runs inside the shipping app; both operate against MCP surfaces the user explicitly authorizes.
+Submission for the **Best Use of Claude Managed Agents** special prize. Two agents live in `managed-agents/`, backed by real Managed Agents primitives (agent × environment × session, beta header `managed-agents-2026-04-01`). Neither runs inside the shipping app.
 
-### 6.1 `corpus-builder`
+### 6.1 `corpus-builder` — Distillation Orchestrator
 
-- **File:** `managed-agents/corpus-builder/agent.yaml`.
-- **Job:** pulls the user's own authored content from Gmail, Notion, GitHub, and Slack via MCP servers, normalizes each item to `{source, timestamp, text, source_id}` JSONL rows, and writes to `~/Library/Application Support/Kiln/corpus/`. Kiln then ingests that folder through its normal drop flow.
-- **Why managed, not in-app:** multi-hour, resumable, cross-service, secret-holding. Exactly the workload profile Claude Managed Agents exist for. Embedding the same logic inside Kiln would force the app to carry a session store, four OAuth implementations, and retry queues — work that duplicates what MCP + Managed Agents already solve.
-- **Config highlights:** `model: claude-opus-4-7`, `maxRuntimeMinutes: 360`, per-source MCP scopes locked to read-only and author-matched (`sent-only` for Gmail, `user-authored` for GitHub, `dms-authored-by-user` for Slack). Four per-source subagents run the same normalization loop against different MCPs. Schedule disabled by default; the user opts in from Kiln's onboarding.
+- **Files:** `managed-agents/corpus-builder/{agent.json, environment.json, session.template.json, system-prompt.txt}`.
+- **Job:** runs the Opus-as-teacher labeling pass for the distilled `quality-classifier` (and, post-pilot, `preference-judge` and `style-extractor`). Reads a mounted JSONL of snippets, writes labels concurrently via an inline Python script using `asyncio.Semaphore(20)`, streams a progress event every 50 rows, and commits the run directory back to the repo on `managed-agent/distillation-pilot`.
+- **Why managed, not in-app:** long-running (25 min pilot, ~8 h for the full 10k), observable in the Console timeline (screenshots feed the judge submission), secret-holding (API key in vault, GitHub PAT in resource mount — neither touches the developer's laptop), resumable (keyed on `request_id`), and strictly cost-capped ($20 hard stop enforced in the agent's system prompt).
+- **Pilot:** 500-sample quality-classifier validation run; success criteria + budget in [.claude/plans/stateless-purring-quiche.md §6](.claude/plans/stateless-purring-quiche.md). Directory history: originally reserved for an MCP puller — see SPEC §8.3, deferred post-hackathon.
+- **Config highlights:** `model: claude-opus-4-7`, `tools: [agent_toolset_20260401]` (bash/read/write/edit/glob/grep/web_fetch/web_search), environment `timeout_minutes: 60`, network allowlist (`api.anthropic.com`, `github.com`, `api.github.com`), labeling rubric inlined from [.claude/skills/distillation-pipeline/SKILL.md §3.2](.claude/skills/distillation-pipeline/SKILL.md).
 
 ### 6.2 `eval-matrix-runner`
 
@@ -171,8 +172,9 @@ Submission for the **Best Use of Claude Managed Agents** special prize. Two agen
 
 ### 6.3 Session stats
 
-- `corpus-builder` total runtime across sprint: <!-- FILL -->
-- `corpus-builder` rows ingested (across all MCPs): <!-- FILL -->
+- Distillation Orchestrator pilot wall clock: <!-- FILL -->
+- Distillation Orchestrator pilot labels written: <!-- FILL -->
+- Distillation Orchestrator pilot token cost: <!-- FILL -->
 - `eval-matrix-runner` executions through demo day: <!-- FILL -->
 - Regressions caught before merge by the runner: <!-- FILL -->
 
@@ -261,8 +263,9 @@ Live-updated at `/milestone N`. Through end of day 3 of 5:
 
 ### 9.4 Managed agents
 
-- `corpus-builder` runtime: <!-- FILL -->
-- `corpus-builder` rows: <!-- FILL -->
+- Distillation Orchestrator pilot runtime: <!-- FILL -->
+- Distillation Orchestrator labels written: <!-- FILL -->
+- Distillation Orchestrator pilot cost (USD): <!-- FILL -->
 - `eval-matrix-runner` executions: <!-- FILL -->
 - Regressions caught: <!-- FILL -->
 

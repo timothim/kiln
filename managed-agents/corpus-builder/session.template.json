@@ -1,0 +1,16 @@
+{
+  "agent": "${AGENT_ID}",
+  "environment_id": "${ENV_ID}",
+  "resources": [
+    {
+      "type": "file",
+      "file_id": "${INPUT_FILE_ID}",
+      "mount_path": "/workspace/input.jsonl"
+    }
+  ],
+  "metadata": {
+    "run": "quality-pilot-500",
+    "initiated_by": "timtvn",
+    "component": "quality-classifier"
+  }
+}
