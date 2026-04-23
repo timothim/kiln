@@ -105,6 +105,7 @@ fused/
 ## Session artifacts
 .claude/reviews/
 .kiln-last-test-status
+.kiln-demo-check.json
 
 ## Demo assets we regenerate
 docs/demo/raw/
