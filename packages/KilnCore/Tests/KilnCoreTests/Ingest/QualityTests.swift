@@ -21,14 +21,16 @@ final class QualityTests: XCTestCase {
     func testRejectsTooShort() throws {
         let text = try String(contentsOf: TestFixtures.fixture("edge_cases/16-tiny.md"), encoding: .utf8)
         let (verdict, metrics) = QualityFilter.evaluate(text, config: config)
-        XCTAssertEqual(verdict, .rejected(.tooShort))
+        XCTAssertEqual(verdict, .hardRejected(.tooShort))
+        XCTAssertEqual(verdict.tier, .hardReject)
         XCTAssertLessThan(metrics.charCount, config.minChunkChars)
     }
 
     func testRejectsFrenchWhenEnglishOnly() throws {
         let text = try String(contentsOf: TestFixtures.fixture("edge_cases/12-french-journal.md"), encoding: .utf8)
         let (verdict, metrics) = QualityFilter.evaluate(text, config: config)
-        XCTAssertEqual(verdict, .rejected(.wrongLanguage))
+        XCTAssertEqual(verdict, .hardRejected(.wrongLanguage))
+        XCTAssertEqual(verdict.tier, .hardReject)
         XCTAssertEqual(metrics.detectedLanguage, "fr")
     }
 
@@ -43,14 +45,16 @@ final class QualityTests: XCTestCase {
     func testRejectsRepetitive() throws {
         let text = try String(contentsOf: TestFixtures.fixture("edge_cases/13-repetitive.md"), encoding: .utf8)
         let (verdict, metrics) = QualityFilter.evaluate(text, config: config)
-        XCTAssertEqual(verdict, .rejected(.tooRepetitive))
+        XCTAssertEqual(verdict, .softRejected(.tooRepetitive))
+        XCTAssertEqual(verdict.tier, .softReject)
         XCTAssertLessThan(metrics.uniqueWordRatio, 0.15)
     }
 
     func testRejectsEmojiSpamAsNonASCII() throws {
         let text = try String(contentsOf: TestFixtures.fixture("edge_cases/14-emoji-spam.md"), encoding: .utf8)
         let (verdict, metrics) = QualityFilter.evaluate(text, config: config)
-        XCTAssertEqual(verdict, .rejected(.tooMuchNonASCII))
+        XCTAssertEqual(verdict, .hardRejected(.tooMuchNonASCII))
+        XCTAssertEqual(verdict.tier, .hardReject)
         XCTAssertGreaterThan(metrics.nonASCIIRatio, 0.30)
     }
 
@@ -77,11 +81,28 @@ final class QualityTests: XCTestCase {
         let text = "no no no no no no no no no no no no no no no"
         let (verdict, metrics) = QualityFilter.evaluate(text, config: config)
         XCTAssertEqual(metrics.wordCount, 15)
-        XCTAssertNotEqual(verdict, .rejected(.tooRepetitive))
+        XCTAssertNotEqual(verdict, .softRejected(.tooRepetitive))
+        XCTAssertNotEqual(verdict, .hardRejected(.tooRepetitive))
     }
 
     func testEmptyTextRejectedAsTooShort() {
         let (verdict, _) = QualityFilter.evaluate("", config: config)
-        XCTAssertEqual(verdict, .rejected(.tooShort))
+        XCTAssertEqual(verdict, .hardRejected(.tooShort))
+    }
+
+    func testTierClassification() {
+        XCTAssertEqual(QualityFilter.tier(for: .tooShort), .hardReject)
+        XCTAssertEqual(QualityFilter.tier(for: .wrongLanguage), .hardReject)
+        XCTAssertEqual(QualityFilter.tier(for: .tooMuchNonASCII), .hardReject)
+        XCTAssertEqual(QualityFilter.tier(for: .tooRepetitive), .softReject)
+    }
+
+    func testAcceptedVerdictTierIsAccept() {
+        let (verdict, _) = QualityFilter.evaluate(
+            "This is a long enough chunk of plain English writing to clear the quality filters for the M2 unit tests.",
+            config: config
+        )
+        XCTAssertEqual(verdict, .accepted)
+        XCTAssertEqual(verdict.tier, .accept)
     }
 }

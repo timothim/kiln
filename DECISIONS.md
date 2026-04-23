@@ -71,4 +71,38 @@ Format for every entry:
 
 ---
 
+## 5. Per-speaker iMessage dedup deferred to post-hackathon
+
+- **Date:** 2026-04-23
+- **Context:** SPEC §5.2 lists per-speaker near-duplicate suppression as a third dedup tier on top of SHA-256 exact + MinHash near. The ingest pipeline currently applies both global tiers but not a per-handle scope inside iMessage threads. Verifier (T2 #3) flagged whether this should ship in M2.
+- **Options considered:**
+  - Implement now — adds a `PerSpeakerDedup` pass keyed on normalized handle, a shingle signature per speaker, and a new test matrix (intra-handle collisions, cross-handle isolation, empty-handle fallback). ~half a day at sprint pace plus fixture churn.
+  - Defer — keep SHA-256 + MinHash @ 0.85 as the only dedup tiers in M2; document the gap here.
+- **Choice:** Defer. Re-evaluate in M7 alongside DPO feedstock work, or sooner if real-world iMessage exports show meaningful leakage.
+- **Reason:** On the fixture corpus the global MinHash already catches the repeat patterns per-speaker dedup would catch (`15-near-dup-of-02.md` drops cleanly). Marginal quality gain is small against the remaining 5-day scope risk. The addition is purely additive later — no schema or file-format change.
+- **Reversible?** Yes — layer a `PerSpeakerDedup` struct on `IMessageParser` output, add a counter to `IngestReport`, and plumb a `IngestConfig.perSpeakerDedup: Bool` flag. No downstream changes.
+
+## 6. Commit message labeling follows SPEC §12 global milestone numbering
+
+- **Date:** 2026-04-23
+- **Context:** The prior data-pipeline commit was initially authored as `milestone(1): data pipeline`, following a DATA-role–relative counter. SPEC §12 defines M0–M10 as a single global milestone ladder where M1 is "scaffold validated" (done on `main` by `49b2541`) and M2 is "Ingest + Dedup" (this worktree's contribution). Verifier issue 5 flagged the off-by-one.
+- **Options considered:**
+  - Edit SPEC §12 to re-number milestones to match the role-relative counter — renames M2 through M10 for cosmetic reasons, invalidates cross-references in `ORCHESTRATION.md` and skill files.
+  - Rename the commit — one local amend on an unpushed branch, zero cross-file churn.
+- **Choice:** Amend the prior commit subject from `milestone(1)` to `milestone(2)` (done one-time on this branch before pushing). Future DATA commits will use the SPEC §12 global number (M2, M3, etc.), not a role-relative counter.
+- **Reason:** SPEC is the single source of truth for milestone numbering; commit labels must match it so `git log --grep=milestone` remains usable as a milestone timeline.
+- **Reversible?** Yes — git history is rewritable up to the first push.
+
+## 7. `NaturalLanguage` permitted in KilnCore alongside Foundation/OSLog/CryptoKit/CoreML
+
+- **Date:** 2026-04-23
+- **Context:** `packages/KilnCore/CLAUDE.md` names `Foundation`, `OSLog`, `CryptoKit`, and `CoreML` as the allowed dependencies, with every addition requiring a DECISIONS entry. The M2 quality filter uses `NLLanguageRecognizer` (SPEC §5.3) to gate non-English chunks; this import was added during M2 without the DECISIONS paperwork the CLAUDE rule requires.
+- **Options considered:**
+  - Replace with a hand-rolled language heuristic (stopword ratios, n-gram frequency) — noisy at short lengths, duplicates a well-tested Apple framework, produces more false rejections.
+  - Drop the language filter — SPEC §5.3 explicitly requires it; would regress quality for mixed-language corpora.
+  - Log the exception here — `NaturalLanguage` is an Apple system framework, not a third-party SPM dependency, and linking it adds no binary weight beyond what the platform already provides.
+- **Choice:** Keep `NaturalLanguage` in KilnCore; log the exception. Update the allowed-deps list to read `Foundation / OSLog / CryptoKit / CoreML / NaturalLanguage` once another sub-CLAUDE touch is needed.
+- **Reason:** System framework (not SPM), mandated by SPEC, no credible alternative in scope for the sprint. The spirit of the CLAUDE rule is "no unexamined third-party deps"; an Apple-shipped framework under explicit SPEC mandate meets that bar.
+- **Reversible?** Yes — swap for a custom detector if SPEC §5.3 ever drops the language gate.
+
 <!-- Append new decisions below as the sprint progresses. Number sequentially. Do not edit entries above. -->

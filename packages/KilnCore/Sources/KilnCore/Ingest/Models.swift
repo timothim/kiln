@@ -79,11 +79,20 @@ public struct SkippedFile: Codable, Sendable, Hashable {
     }
 }
 
+public struct QualityRejectionCounts: Codable, Sendable, Hashable {
+    public var tooShort: Int = 0
+    public var wrongLanguage: Int = 0
+    public var tooRepetitive: Int = 0
+    public var tooMuchNonASCII: Int = 0
+
+    public init() {}
+
+    public var total: Int { tooShort + wrongLanguage + tooRepetitive + tooMuchNonASCII }
+}
+
 public struct QualityBreakdown: Codable, Sendable, Hashable {
-    public var rejectedTooShort: Int = 0
-    public var rejectedWrongLanguage: Int = 0
-    public var rejectedTooRepetitive: Int = 0
-    public var rejectedTooMuchNonASCII: Int = 0
+    public var softRejected: QualityRejectionCounts = QualityRejectionCounts()
+    public var hardRejected: QualityRejectionCounts = QualityRejectionCounts()
 
     public init() {}
 }
@@ -109,6 +118,8 @@ public struct IngestReport: Codable, Sendable, Hashable {
     public var chunksAfterMinHashDedup: Int = 0
     public var chunksAfterQuality: Int = 0
     public var qualityBreakdown: QualityBreakdown = QualityBreakdown()
+    public var softRejectedCount: Int = 0
+    public var hardRejectedCount: Int = 0
     public var trainCount: Int = 0
     public var evalCount: Int = 0
     public var outputPaths: OutputPaths?
@@ -136,6 +147,8 @@ public struct IngestConfig: Sendable {
     public var supportedTextExtensions: Set<String>
     public var supportedJSONExtensions: Set<String>
     public var supportedCodeExtensions: Set<String>
+    public var supportedEmailExtensions: Set<String>
+    public var userEmails: Set<String>
 
     public init(
         userName: String = "User",
@@ -159,7 +172,9 @@ public struct IngestConfig: Sendable {
         ],
         supportedTextExtensions: Set<String> = ["md", "markdown", "txt"],
         supportedJSONExtensions: Set<String> = ["json"],
-        supportedCodeExtensions: Set<String> = ["py", "swift", "ts", "js", "rs", "go"]
+        supportedCodeExtensions: Set<String> = ["py", "swift", "ts", "js", "rs", "go"],
+        supportedEmailExtensions: Set<String> = ["eml", "mbox"],
+        userEmails: Set<String> = []
     ) {
         self.userName = userName
         self.minChunkChars = minChunkChars
@@ -180,5 +195,7 @@ public struct IngestConfig: Sendable {
         self.supportedTextExtensions = supportedTextExtensions
         self.supportedJSONExtensions = supportedJSONExtensions
         self.supportedCodeExtensions = supportedCodeExtensions
+        self.supportedEmailExtensions = supportedEmailExtensions
+        self.userEmails = userEmails
     }
 }

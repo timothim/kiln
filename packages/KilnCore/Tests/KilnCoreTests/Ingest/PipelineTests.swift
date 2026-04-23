@@ -144,11 +144,10 @@ final class PipelineTests: XCTestCase {
 
     func testReportCapturesQualityBreakdown() async throws {
         let (report, _) = try await runPipeline()
-        let totalRejected = report.qualityBreakdown.rejectedTooShort
-            + report.qualityBreakdown.rejectedWrongLanguage
-            + report.qualityBreakdown.rejectedTooRepetitive
-            + report.qualityBreakdown.rejectedTooMuchNonASCII
-        XCTAssertEqual(totalRejected, report.chunksAfterMinHashDedup - report.chunksAfterQuality)
+        let rejected = report.chunksAfterMinHashDedup - report.chunksAfterQuality
+        XCTAssertEqual(report.softRejectedCount + report.hardRejectedCount, rejected)
+        XCTAssertEqual(report.qualityBreakdown.softRejected.total, report.softRejectedCount)
+        XCTAssertEqual(report.qualityBreakdown.hardRejected.total, report.hardRejectedCount)
     }
 
     func testReportHasOutputPaths() async throws {

@@ -78,8 +78,12 @@ public struct IngestPipeline: Sendable {
             switch verdict {
             case .accepted:
                 kept.append(chunk)
-            case .rejected(let reason):
-                Self.recordQualityRejection(reason, into: &report.qualityBreakdown)
+            case .softRejected(let reason):
+                Self.recordRejection(reason, into: &report.qualityBreakdown.softRejected)
+                report.softRejectedCount += 1
+            case .hardRejected(let reason):
+                Self.recordRejection(reason, into: &report.qualityBreakdown.hardRejected)
+                report.hardRejectedCount += 1
             }
         }
         report.chunksAfterQuality = kept.count
@@ -88,7 +92,7 @@ public struct IngestPipeline: Sendable {
             throw IngestError.noExamplesGenerated
         }
 
-        let examples = kept.map { ChatMLBuilder.build(chunk: $0) }
+        let examples = kept.map { ChatMLBuilder.build(chunk: $0, userName: config.userName) }
         let split = DatasetSplit.split(examples, evalFraction: config.evalFraction, seed: config.randomSeed)
         report.trainCount = split.train.count
         report.evalCount = split.eval.count
@@ -124,16 +128,16 @@ public struct IngestPipeline: Sendable {
         }
     }
 
-    private static func recordQualityRejection(_ reason: SkipReason, into breakdown: inout QualityBreakdown) {
+    private static func recordRejection(_ reason: SkipReason, into counts: inout QualityRejectionCounts) {
         switch reason {
         case .tooShort:
-            breakdown.rejectedTooShort += 1
+            counts.tooShort += 1
         case .wrongLanguage:
-            breakdown.rejectedWrongLanguage += 1
+            counts.wrongLanguage += 1
         case .tooRepetitive:
-            breakdown.rejectedTooRepetitive += 1
+            counts.tooRepetitive += 1
         case .tooMuchNonASCII:
-            breakdown.rejectedTooMuchNonASCII += 1
+            counts.tooMuchNonASCII += 1
         case .unsupportedExtension, .tooLarge, .unreadable, .parserFailure,
              .emptyAfterParse, .exactDuplicate, .nearDuplicate:
             break

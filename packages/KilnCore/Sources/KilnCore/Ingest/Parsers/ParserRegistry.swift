@@ -11,7 +11,8 @@ public struct ParserRegistry: Sendable {
         IMessageParser(),
         OpenAIChatParser(),
         MarkdownTextParser(),
-        CodeParser()
+        CodeParser(),
+        EmailParser()
     ]
 
     public func parser(for url: URL) -> CorpusParser? {

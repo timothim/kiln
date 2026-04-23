@@ -23,12 +23,44 @@ public struct QualityMetrics: Sendable, Equatable {
     }
 }
 
+public enum QualityTier: String, Codable, Sendable, Equatable {
+    case accept
+    case softReject
+    case hardReject
+}
+
 public enum QualityVerdict: Sendable, Equatable {
     case accepted
-    case rejected(SkipReason)
+    case softRejected(SkipReason)
+    case hardRejected(SkipReason)
+
+    public var tier: QualityTier {
+        switch self {
+        case .accepted: return .accept
+        case .softRejected: return .softReject
+        case .hardRejected: return .hardReject
+        }
+    }
 }
 
 public enum QualityFilter {
+    /// Two-tier rejection policy. Hard rejects are unsalvageable (too short,
+    /// wrong language, emoji/binary spam) and will never enter any training
+    /// signal. Soft rejects (currently: repetition) are still dropped from the
+    /// M2 train/eval split but carry a shape useful as DPO "rejected" feedstock
+    /// when M7 lands. See DECISIONS #5 for the deferral rationale.
+    public static func tier(for reason: SkipReason) -> QualityTier {
+        switch reason {
+        case .tooShort, .wrongLanguage, .tooMuchNonASCII:
+            return .hardReject
+        case .tooRepetitive:
+            return .softReject
+        case .unsupportedExtension, .tooLarge, .unreadable, .parserFailure,
+             .emptyAfterParse, .exactDuplicate, .nearDuplicate:
+            return .hardReject
+        }
+    }
+
     public static func evaluate(
         _ text: String,
         config: IngestConfig
@@ -36,23 +68,27 @@ public enum QualityFilter {
         let metrics = measure(text)
 
         if metrics.charCount < config.minChunkChars {
-            return (.rejected(.tooShort), metrics)
+            return (verdict(for: .tooShort), metrics)
         }
         if metrics.nonASCIIRatio > config.maxNonASCIIRatio {
-            return (.rejected(.tooMuchNonASCII), metrics)
+            return (verdict(for: .tooMuchNonASCII), metrics)
         }
         if metrics.wordCount >= 20 {
             let repetition = 1.0 - metrics.uniqueWordRatio
             if repetition > config.maxRepetitionRatio {
-                return (.rejected(.tooRepetitive), metrics)
+                return (verdict(for: .tooRepetitive), metrics)
             }
         }
         if !config.allowedLanguages.isEmpty,
            let lang = metrics.detectedLanguage,
            !config.allowedLanguages.contains(lang) {
-            return (.rejected(.wrongLanguage), metrics)
+            return (verdict(for: .wrongLanguage), metrics)
         }
         return (.accepted, metrics)
+    }
+
+    private static func verdict(for reason: SkipReason) -> QualityVerdict {
+        tier(for: reason) == .softReject ? .softRejected(reason) : .hardRejected(reason)
     }
 
     public static func measure(_ text: String) -> QualityMetrics {
