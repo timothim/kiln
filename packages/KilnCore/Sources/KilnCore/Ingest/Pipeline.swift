@@ -123,15 +123,18 @@ public struct IngestPipeline: Sendable {
         continuation.yield(.runningCounts(counts))
         continuation.yield(.stageFinished(.parsing))
 
-        // Dedup
+        // Dedup — two sub-stages share a single monotonic denominator
+        // (chunks.count * 2) so the progress fraction never steps backward
+        // at the exact-dedup / MinHash boundary.
         continuation.yield(.stageStarted(.dedup))
+        let dedupTotal = chunks.count * 2
         var exact = ExactDedup()
         var afterExact: [Chunk] = []
         afterExact.reserveCapacity(chunks.count)
         for (idx, chunk) in chunks.enumerated() {
             if idx % 500 == 0 {
                 try Task.checkCancellation()
-                continuation.yield(.progress(IngestProgress(stage: .dedup, done: idx, total: chunks.count * 2)))
+                continuation.yield(.progress(IngestProgress(stage: .dedup, done: idx, total: dedupTotal)))
             }
             if exact.add(chunk.assistantText) {
                 afterExact.append(chunk)
@@ -139,6 +142,7 @@ public struct IngestPipeline: Sendable {
         }
         report.chunksAfterExactDedup = afterExact.count
         counts.chunksAfterExactDedup = afterExact.count
+        continuation.yield(.runningCounts(counts))
 
         var lsh = MinHashLSH(
             threshold: config.minHashThreshold,
@@ -152,8 +156,7 @@ public struct IngestPipeline: Sendable {
         for (idx, chunk) in afterExact.enumerated() {
             if idx % 500 == 0 {
                 try Task.checkCancellation()
-                let offset = chunks.count
-                continuation.yield(.progress(IngestProgress(stage: .dedup, done: offset + idx, total: chunks.count + afterExact.count)))
+                continuation.yield(.progress(IngestProgress(stage: .dedup, done: chunks.count + idx, total: dedupTotal)))
             }
             if lsh.add(chunk.assistantText) {
                 afterNear.append(chunk)

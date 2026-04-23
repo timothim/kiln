@@ -7,12 +7,14 @@ struct LiveCountTicker: View {
     let value: Int
 
     var body: some View {
+        // 2pt: sub-typographic gap between a numeric display and its caption.
+        // Layout tokens don't model kerning-scale spacing; leave as literal.
         VStack(alignment: .leading, spacing: 2) {
             Text(value, format: .number)
                 .font(Kiln.Font.title)
                 .monospacedDigit()
                 .contentTransition(.numericText(countsDown: false))
-                .animation(.smooth(duration: 0.35), value: value)
+                .animation(Kiln.Motion.standard, value: value)
             Text(label)
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.secondary)

@@ -17,12 +17,15 @@ struct PrepareStageView: View {
                 switch model.status {
                 case .idle:
                     quietReading
+                        .transition(Kiln.Motion.stageTransition)
                 case .running:
                     IngestProgressView(project: project, model: model, onCancel: onCancel)
+                        .transition(Kiln.Motion.stageTransition)
                 case .cancelling:
                     CancellingOverlay(
                         underlying: IngestProgressView(project: project, model: model, onCancel: onCancel)
                     )
+                    .transition(Kiln.Motion.stageTransition)
                 case .completed(let report):
                     DatasetDoctorView(
                         project: project,
@@ -30,12 +33,27 @@ struct PrepareStageView: View {
                         onContinue: onContinue,
                         onReset: onReset
                     )
+                    .transition(Kiln.Motion.stageTransition)
                 case .failed(let error):
                     IngestErrorView(project: project, error: error, onReset: onReset)
+                        .transition(Kiln.Motion.stageTransition)
                 }
             } else {
                 quietReading
+                    .transition(Kiln.Motion.stageTransition)
             }
+        }
+        .animation(Kiln.Motion.standard, value: statusKey)
+    }
+
+    private var statusKey: String {
+        guard let model else { return "nil" }
+        switch model.status {
+        case .idle:       return "idle"
+        case .running:    return "running"
+        case .cancelling: return "cancelling"
+        case .completed:  return "completed"
+        case .failed:     return "failed"
         }
     }
 
@@ -50,7 +68,7 @@ struct PrepareStageView: View {
                 .frame(maxWidth: 320)
                 .padding(.top, Kiln.Space.xs)
             if let folder = project.folderName {
-                HStack(spacing: 6) {
+                HStack(spacing: Kiln.Space.xxs) {
                     Image(systemName: "folder")
                         .font(Kiln.Font.caption)
                         .foregroundStyle(.tertiary)

@@ -33,10 +33,11 @@ struct DatasetDoctorView: View {
     }
 
     private var funnelRow: some View {
-        HStack(alignment: .top, spacing: Kiln.Space.l) {
+        HStack(alignment: .top, spacing: Kiln.Space.m) {
             LiveCountTicker(label: "Files read", value: report.filesParsed)
             LiveCountTicker(label: "Chunks", value: report.chunksBeforeDedup)
-            LiveCountTicker(label: "After dedup", value: report.chunksAfterMinHashDedup)
+            LiveCountTicker(label: "Exact unique", value: report.chunksAfterExactDedup)
+            LiveCountTicker(label: "Near unique", value: report.chunksAfterMinHashDedup)
             LiveCountTicker(label: "Kept", value: report.chunksAfterQuality)
         }
     }
@@ -46,7 +47,7 @@ struct DatasetDoctorView: View {
             Text("Why samples were dropped")
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.tertiary)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 breakdownRow("Too short", report.qualityBreakdown.hardRejected.tooShort + report.qualityBreakdown.softRejected.tooShort)
                 breakdownRow("Wrong language", report.qualityBreakdown.hardRejected.wrongLanguage + report.qualityBreakdown.softRejected.wrongLanguage)
                 breakdownRow("Too repetitive", report.qualityBreakdown.hardRejected.tooRepetitive + report.qualityBreakdown.softRejected.tooRepetitive)
@@ -83,7 +84,7 @@ struct DatasetDoctorView: View {
                     .font(Kiln.Font.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, Kiln.Space.s)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, Kiln.Space.xs)
                     .background(
                         RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
                             .fill(Kiln.Palette.accent)

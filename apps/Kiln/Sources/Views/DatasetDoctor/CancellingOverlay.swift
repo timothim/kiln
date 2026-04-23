@@ -18,7 +18,7 @@ struct CancellingOverlay<Underlying: View>: View {
                     .foregroundStyle(.primary)
             }
             .padding(.horizontal, Kiln.Space.s)
-            .padding(.vertical, 8)
+            .padding(.vertical, Kiln.Space.xs)
             .background(
                 Capsule(style: .continuous)
                     .fill(.background.secondary)

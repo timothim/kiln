@@ -32,8 +32,8 @@ private struct SampleCard: View {
     let preview: ChunkPreview
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+            HStack(spacing: Kiln.Space.xxs) {
                 Image(systemName: iconName(for: preview.kind))
                     .font(Kiln.Font.caption)
                     .foregroundStyle(.secondary)

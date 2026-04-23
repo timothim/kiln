@@ -158,6 +158,8 @@ public struct ChunkPreview: Sendable, Hashable, Identifiable {
     public let assistantSnippet: String
     public let userPromptSnippet: String
 
+    /// Combined hard cap of 200 chars (ellipsis inclusive): 120 for the
+    /// assistant snippet, 80 for the user prompt. Enforced at construction.
     public init(
         id: UUID = UUID(),
         sourcePath: String,
@@ -168,16 +170,16 @@ public struct ChunkPreview: Sendable, Hashable, Identifiable {
         self.id = id
         self.sourcePath = sourcePath
         self.kind = kind
-        self.assistantSnippet = assistantSnippet
-        self.userPromptSnippet = userPromptSnippet
+        self.assistantSnippet = Self.snippet(assistantSnippet, limit: 120)
+        self.userPromptSnippet = Self.snippet(userPromptSnippet, limit: 80)
     }
 
-    public static func from(_ chunk: Chunk, assistantLimit: Int = 180, userLimit: Int = 80) -> ChunkPreview {
+    public static func from(_ chunk: Chunk) -> ChunkPreview {
         ChunkPreview(
             sourcePath: chunk.sourcePath,
             kind: chunk.kind,
-            assistantSnippet: Self.snippet(chunk.assistantText, limit: assistantLimit),
-            userPromptSnippet: Self.snippet(chunk.userPrompt, limit: userLimit)
+            assistantSnippet: chunk.assistantText,
+            userPromptSnippet: chunk.userPrompt
         )
     }
 
@@ -186,7 +188,7 @@ public struct ChunkPreview: Sendable, Hashable, Identifiable {
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
         if collapsed.count <= limit { return collapsed }
-        let end = collapsed.index(collapsed.startIndex, offsetBy: limit)
+        let end = collapsed.index(collapsed.startIndex, offsetBy: limit - 1)
         return String(collapsed[..<end]) + "…"
     }
 }

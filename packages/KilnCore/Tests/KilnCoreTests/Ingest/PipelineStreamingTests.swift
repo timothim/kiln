@@ -152,6 +152,27 @@ final class PipelineStreamingTests: XCTestCase {
         XCTAssertLessThanOrEqual(sampleCount, completedChunksAfterQuality)
     }
 
+    func test_streaming_progress_fraction_monotonic_per_stage() async throws {
+        let out = tempDir.appendingPathComponent("out")
+        let stream = IngestPipeline().runStreaming(
+            sourceDirectory: TestFixtures.sampleCorpusURL,
+            outputDirectory: out
+        )
+
+        var lastPerStage: [IngestStage: Double] = [:]
+        for try await event in stream {
+            if case .progress(let p) = event {
+                let previous = lastPerStage[p.stage] ?? 0
+                XCTAssertGreaterThanOrEqual(
+                    p.fraction, previous,
+                    "fraction regressed within stage \(p.stage): \(previous) → \(p.fraction)"
+                )
+                XCTAssertLessThanOrEqual(p.fraction, 1.0, "fraction exceeded 1.0 in stage \(p.stage)")
+                lastPerStage[p.stage] = p.fraction
+            }
+        }
+    }
+
     func test_streaming_running_counts_monotonic() async throws {
         let out = tempDir.appendingPathComponent("out")
         let stream = IngestPipeline().runStreaming(
