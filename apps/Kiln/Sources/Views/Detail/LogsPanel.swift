@@ -47,7 +47,7 @@ struct LogsPanel: View {
 
             Text("live")
                 .font(Kiln.Font.caption)
-                .foregroundStyle(Kiln.Palette.accent)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, Kiln.Space.s)
         .padding(.vertical, Kiln.Space.s)

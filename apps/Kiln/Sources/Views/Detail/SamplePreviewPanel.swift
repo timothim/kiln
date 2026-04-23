@@ -23,7 +23,7 @@ struct SamplePreviewPanel: View {
             promptRow
 
             sampleRow(label: "Base",  text: sample.base, tint: .secondary)
-            sampleRow(label: "Kiln",  text: sample.tuned, tint: Kiln.Palette.accent)
+            sampleRow(label: "Kiln",  text: sample.tuned, tint: .primary)
         }
         .padding(Kiln.Space.s)
     }

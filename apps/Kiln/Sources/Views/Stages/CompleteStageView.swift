@@ -12,7 +12,7 @@ struct CompleteStageView: View {
                 HStack(spacing: Kiln.Space.xs) {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: Kiln.Icon.heading))
-                        .foregroundStyle(Kiln.Palette.accent)
+                        .foregroundStyle(.green)
                         .accessibilityHidden(true)
                     Text("\(project.name) is ready")
                         .font(Kiln.Font.display)
