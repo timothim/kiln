@@ -37,9 +37,12 @@ struct IngestProgressView: View {
 
     private var stageRow: some View {
         HStack(spacing: Kiln.Space.xs) {
+            // Ingest is reading, not firing — DESIGN.md §Don'ts line 240. The
+            // stage icon stays on the secondary tier; the progress bar below
+            // carries the single firing accent.
             Image(systemName: iconName(for: model.currentStage))
                 .font(Kiln.Font.caption)
-                .foregroundStyle(Kiln.Palette.firing)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(stageLabel(for: model.currentStage))
                 .font(Kiln.Font.caption)

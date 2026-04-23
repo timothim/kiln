@@ -34,7 +34,7 @@ struct IngestErrorView: View {
             .frame(maxWidth: 520, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                    .fill(Kiln.Palette.firingWash)
+                    .fill(Kiln.Palette.surfaceSunken)
             )
 
             Spacer(minLength: 0)
@@ -76,7 +76,7 @@ struct IngestErrorView: View {
     private var iconColor: Color {
         switch error {
         case .cancelled: return .secondary
-        default: return Kiln.Palette.firing
+        default: return Kiln.Palette.danger
         }
     }
 }
