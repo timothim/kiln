@@ -15,10 +15,10 @@ struct EmberGlow: ViewModifier {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Kiln.Palette.accent, lineWidth: lineWidth)
+                    .strokeBorder(Kiln.Palette.firing, lineWidth: lineWidth)
                     .opacity(pulsing ? 1.0 : 0.9)
             }
-            .shadow(color: Kiln.Palette.accent.opacity(pulsing ? 0.45 : 0.18),
+            .shadow(color: Kiln.Palette.firing.opacity(pulsing ? 0.45 : 0.18),
                     radius: glowRadius)
             .onAppear {
                 guard !reduceMotion, !pulsing else { return }

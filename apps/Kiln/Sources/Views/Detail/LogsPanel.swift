@@ -49,8 +49,8 @@ struct LogsPanel: View {
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, Kiln.Space.s)
-        .padding(.vertical, Kiln.Space.s)
+        .padding(.horizontal, Kiln.Space.m)
+        .padding(.vertical, Kiln.Space.m)
     }
 
     private var logList: some View {
@@ -69,8 +69,8 @@ struct LogsPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .padding(.horizontal, Kiln.Space.s)
-            .padding(.vertical, Kiln.Space.s)
+            .padding(.horizontal, Kiln.Space.m)
+            .padding(.vertical, Kiln.Space.m)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

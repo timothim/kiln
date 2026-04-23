@@ -16,7 +16,7 @@ struct SamplePreviewPanel: View {
     )
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.s) {
+        VStack(alignment: .leading, spacing: Kiln.Space.m) {
             Text("Sample")
                 .font(Kiln.Font.title)
 
@@ -25,7 +25,7 @@ struct SamplePreviewPanel: View {
             sampleRow(label: "Base",  text: sample.base, tint: .secondary)
             sampleRow(label: "Kiln",  text: sample.tuned, tint: .primary)
         }
-        .padding(Kiln.Space.s)
+        .padding(Kiln.Space.m)
     }
 
     private var promptRow: some View {

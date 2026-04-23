@@ -51,10 +51,10 @@ private struct SampleCard: View {
                 .multilineTextAlignment(.leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Kiln.Space.s)
+        .padding(Kiln.Space.m)
         .background(
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Kiln.Palette.accentWash)
+                .fill(Kiln.Palette.firingWash)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Sample from \(sourceLabel). \(preview.assistantSnippet)")
@@ -81,10 +81,10 @@ private struct EmptySampleCard: View {
                 .foregroundStyle(.tertiary)
             Spacer()
         }
-        .padding(Kiln.Space.s)
+        .padding(Kiln.Space.m)
         .background(
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Kiln.Palette.accentWash)
+                .fill(Kiln.Palette.firingWash)
         )
     }
 }

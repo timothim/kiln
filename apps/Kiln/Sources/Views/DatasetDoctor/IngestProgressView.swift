@@ -9,7 +9,7 @@ struct IngestProgressView: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: subtitle(for: model.currentStage),
@@ -31,7 +31,7 @@ struct IngestProgressView: View {
                     .accessibilityHint("Stops reading your folder")
             }
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -39,7 +39,7 @@ struct IngestProgressView: View {
         HStack(spacing: Kiln.Space.xs) {
             Image(systemName: iconName(for: model.currentStage))
                 .font(Kiln.Font.caption)
-                .foregroundStyle(Kiln.Palette.accent)
+                .foregroundStyle(Kiln.Palette.firing)
                 .accessibilityHidden(true)
             Text(stageLabel(for: model.currentStage))
                 .font(Kiln.Font.caption)
@@ -53,7 +53,7 @@ struct IngestProgressView: View {
     }
 
     private var counterRow: some View {
-        HStack(alignment: .top, spacing: Kiln.Space.l) {
+        HStack(alignment: .top, spacing: Kiln.Space.xl) {
             LiveCountTicker(label: "Files read", value: model.counts.filesParsed)
             LiveCountTicker(label: "Samples kept", value: model.counts.chunksAfterQuality)
             LiveCountTicker(label: "Duplicates dropped", value: duplicatesDropped)

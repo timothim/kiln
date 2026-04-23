@@ -26,7 +26,7 @@ struct StageBadge: View {
 
     private var dotColor: Color {
         switch stage {
-        case .training:    Kiln.Palette.accent
+        case .training:    Kiln.Palette.firing
         case .complete:    .secondary
         case .preparing:   .secondary
         case .readyToDrop: Color.secondary.opacity(0.55)
@@ -35,7 +35,7 @@ struct StageBadge: View {
 
     private var pillColor: Color {
         switch stage {
-        case .training:    Kiln.Palette.accentWash
+        case .training:    Kiln.Palette.firingWash
         default:           Color.primary.opacity(0.05)
         }
     }

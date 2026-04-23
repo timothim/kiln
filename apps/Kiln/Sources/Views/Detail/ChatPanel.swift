@@ -12,7 +12,7 @@ struct ChatPanel: View {
     private var command: String { "ollama run kiln-\(project.slug)" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.s) {
+        VStack(alignment: .leading, spacing: Kiln.Space.m) {
             Text("Chat")
                 .font(Kiln.Font.title)
 
@@ -26,7 +26,7 @@ struct ChatPanel: View {
             copyButton
                 .padding(.top, Kiln.Space.xs - 4)
         }
-        .padding(Kiln.Space.s)
+        .padding(Kiln.Space.m)
     }
 
     private var commandBlock: some View {
@@ -42,7 +42,7 @@ struct ChatPanel: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
-        .padding(.horizontal, Kiln.Space.s)
+        .padding(.horizontal, Kiln.Space.m)
         .padding(.vertical, Kiln.Space.xs)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
