@@ -1,0 +1,25 @@
+{
+  "agent_id": "${AGENT_ID}",
+  "environment_id": "${ENV_ID}",
+  "vault_ids": ["${VAULT_ID}"],
+  "resources": [
+    {
+      "type": "file",
+      "file_id": "${INPUT_FILE_ID}",
+      "mount_path": "/workspace/input.jsonl"
+    },
+    {
+      "type": "github_repository",
+      "url": "https://github.com/timothim/kiln",
+      "mount_path": "/workspace/kiln",
+      "authorization_token": "${GITHUB_PAT}",
+      "branch": "main",
+      "depth": 1
+    }
+  ],
+  "metadata": {
+    "run": "quality-pilot-500",
+    "initiated_by": "timtvn",
+    "component": "quality-classifier"
+  }
+}

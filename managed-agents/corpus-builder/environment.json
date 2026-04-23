@@ -1,0 +1,21 @@
+{
+  "name": "kiln-distill-env",
+  "base_image": "anthropic/ubuntu:latest",
+  "packages": {
+    "apt": ["git", "jq"],
+    "pip": ["anthropic>=0.40.0", "jsonlines>=4.0.0"]
+  },
+  "environment_variables": {
+    "PYTHONUNBUFFERED": "1",
+    "ANTHROPIC_LOG": "error"
+  },
+  "network_policy": {
+    "mode": "allowlist",
+    "allowed_hosts": [
+      "api.anthropic.com",
+      "github.com",
+      "api.github.com"
+    ]
+  },
+  "timeout_minutes": 60
+}

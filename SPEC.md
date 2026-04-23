@@ -212,20 +212,28 @@ Artifacts below the bar do not ship. Run again or hand-label edge cases.
 
 ## 8. Managed Agents spec
 
-See <https://claude.com/blog/claude-managed-agents>. Two agents ship in `managed-agents/`.
+See <https://claude.com/blog/claude-managed-agents>. Two agents ship in `managed-agents/` for the hackathon; a third is deferred.
 
-### 8.1 Corpus Builder
+### 8.1 Distillation Orchestrator
 
-- Long-running ingestion agent that pulls from the user's authorized sources (Gmail, Notion, GitHub, Slack) via MCP.
-- Writes normalized JSONL chunks to a user-owned folder Kiln then ingests.
-- Keeps a resumable cursor per source. Safe to run on a schedule.
-- Config: `managed-agents/corpus-builder/agent.yaml`.
+- Cloud-hosted labeling agent that runs the Opus-as-teacher passes for the three distilled components (quality-classifier, preference-judge, style-extractor — see §7).
+- Reads a mounted JSONL of snippets, writes labels concurrently (20-way async fan-out), commits the run directory back to the repo on a branch named `managed-agent/distillation-<component>-<pilot|full>`.
+- Streams progress events (labels written, tokens consumed, cost estimate) every 50 rows; emits a `run_manifest.json` on completion with git SHA, token counts, and final cost.
+- Config: `managed-agents/corpus-builder/{agent.json, environment.json, session.template.json, system-prompt.txt}`.
+- Hackathon submission (the "Built with Opus 4.7" Managed Agents prize) runs the **quality-classifier pilot**: 500 samples, ≤ $15 all-in, ≤ 60 min wall-clock. See `.claude/plans/stateless-purring-quiche.md`.
 
 ### 8.2 Eval Matrix Runner
 
 - Nightly job. Re-runs the full eval matrix: perplexity on held-out, preference-judge win-rate vs base, three fixed-prompt samples, latency at 256-token generation.
 - Emits a markdown report to `docs/` with a diff vs previous night.
 - Feeds the `demo-check` slash command.
+
+### 8.3 MCP Corpus Puller (deferred — post-hackathon)
+
+- Long-running ingestion agent that pulls from the user's authorized sources (Gmail, Notion, GitHub, Slack) via MCP.
+- Writes normalized JSONL chunks to a user-owned folder Kiln then ingests.
+- Keeps a resumable cursor per source. Safe to run on a schedule.
+- Originally planned as the `corpus-builder/` agent; that directory was repurposed for the Distillation Orchestrator (§8.1). The MCP Puller will land post-hackathon under `managed-agents/mcp-corpus-puller/`.
 
 ---
 

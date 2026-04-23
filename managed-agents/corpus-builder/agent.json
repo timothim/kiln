@@ -1,0 +1,14 @@
+{
+  "name": "kiln-distillation-orchestrator",
+  "model": "claude-opus-4-7",
+  "description": "Opus-as-teacher labeler for Kiln's quality-classifier distillation. Pilot: 500 samples; full run: 10,000. Writes JSONL to a mounted repo checkout and commits the output on branch managed-agent/distillation-pilot.",
+  "tools": [
+    {"type": "agent_toolset_20260401"}
+  ],
+  "metadata": {
+    "project": "kiln",
+    "component": "quality-classifier",
+    "run_type": "pilot",
+    "owner": "timtvn"
+  }
+}

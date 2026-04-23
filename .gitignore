@@ -111,6 +111,9 @@ docs/eval/2*.md
 managed-agents/*/state/
 managed-agents/*/.cursor
 
+## Managed Agent input JSONLs — generated deterministically; do not commit raw input
+managed-agents/*/inputs/
+
 ## Logs
 *.log
 logs/
