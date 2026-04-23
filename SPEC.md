@@ -274,10 +274,26 @@ On success, open Terminal.app at `ollama run kiln-{username}` with a representat
 
 ### 10.1 Design tokens
 
-- **Accent:** Amber `#D97706` (used sparingly — ingest highlight, training progress, export CTA).
-- **Palette:** System-native otherwise (`.regularMaterial`, semantic colors). Full dark-mode parity.
-- **Type:** SF Pro Display at 28 / 22 / 17 / 13. SF Mono for logs and sample output.
-- **Spacing:** 4-pt grid. 8 / 16 / 24 / 32 are the only legal containers.
+See `DESIGN.md` (normative) for the full token set in Google Labs' `design.md`
+format, `apps/Kiln/Sources/DesignSystem.swift` for the Swift projection, and
+`docs/design/tokens.dtcg.json` for the DTCG export. Summary:
+
+- **Accent:** Amber `#D97706` (`firing`) — the single brand accent. Used only
+  on the training progress bar, ember glow, drop-zone targeted state, and the
+  *Teach your model* CTA. Never on checkmarks, success ticks, identity dots,
+  errors, body text, or dividers.
+- **Palette:** System-native otherwise (`.regularMaterial`, `.primary`,
+  `.secondary`, `.tertiary`). Full dark-mode parity. `danger` (`#D32F2F`) for
+  error icons and destructive-button labels only. `surface-sunken` for sample
+  cards, log panels, and neutral error-panel backgrounds.
+- **Type:** SF Pro Display at 28 / 22 / 17 / 13 plus an 11pt `label` with
+  `+0.04em` kerning. SF Mono for logs, terminal commands, and sample output.
+  Numeric readouts use `tnum` (monospaced digits) so counters don't reflow.
+- **Spacing:** 4-point grid with six tokens — `{xxs: 4, xs: 8, sm: 12, m: 16,
+  l: 24, xl: 32}`. The `{8, 16, 24, 32}` shown in earlier drafts was the
+  container-level subset; `xxs` and `sm` are used for tight inline rhythms
+  (badge clusters, icon-to-label gaps) while `m`, `l`, `xl` govern container
+  and section spacing.
 
 ### 10.2 Animation rules
 
