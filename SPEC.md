@@ -322,6 +322,13 @@ JSON-lines over the sidecar's stdout/stderr. One event per line. See `docs/ipc/p
 
 ### 11.2 Inbound commands (app → sidecar, one JSON object per line on stdin)
 
+> **Superseded 2026-04-23** by `packages/kiln_trainer/DECISIONS.md §L8`. The
+> sidecar ships as a set of argparse subcommands invoked as short-lived
+> processes (`python -m kiln_trainer <train|sample|export>`), not a stdin
+> JSON-loop daemon. The inbound schema below is retained for historical
+> reference; the equivalent in implementation is the argparse CLI surface of
+> the three subcommands. Outbound events (§11.1) are unaffected.
+
 ```json
 {"cmd":"sft","corpus":"...","base":"mlx-community/Qwen2.5-3B-Instruct-4bit","rank":16,"epochs":2}
 {"cmd":"dpo","pairs":"...","base":"..."}

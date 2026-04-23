@@ -27,7 +27,7 @@ Every line on stdout is a single JSON object conforming to the schema in `SPEC.m
 Pinned exactly in `pyproject.toml`:
 
 - `mlx-lm==0.21.*`
-- `mlx==0.16.*`
+- `mlx>=0.22,<0.23` (mlx-lm 0.21.5 requires mlx>=0.22 — see local `DECISIONS.md §L7`)
 - `safetensors`, `sentencepiece` for tokenizer compatibility.
 
 No other deps without a `DECISIONS.md` entry. This sidecar stays small.
