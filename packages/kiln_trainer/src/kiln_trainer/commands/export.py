@@ -271,7 +271,10 @@ def _run_subprocess(
         )
         return 127, False
 
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        raise runtime.PipeUnavailableError(
+            f"{label} subprocess missing pipe handle: stdout={proc.stdout!r}"
+        )
 
     def _reader(fh: IO[str]) -> None:
         try:

@@ -19,13 +19,48 @@ from typing import Sequence
 from kiln_trainer import __version__, events, runtime
 
 
+class _SidecarParser(argparse.ArgumentParser):
+    """``ArgumentParser`` that emits a structured JSON error event on stdout
+    before the default ``stderr + sys.exit(2)`` path.
+
+    Rationale: the Swift parent parses stdout JSON lines. If it passes a bad
+    command line (unknown subcommand, missing required flag), argparse's
+    default behaviour only writes to stderr — so from Swift's perspective the
+    sidecar crashes silently from the stdout channel's point of view. Emitting
+    a well-formed ``error`` event first gives the parent a parseable record.
+
+    SPEC §11.3 framing rule: "Unknown event/cmd logged and skipped". Under the
+    argparse model (see `DECISIONS.md §L8`) the equivalent is: unknown
+    subcommand → exit 2 + structured JSON on stdout. Exit code is unchanged so
+    the shell/Swift `Process.terminationStatus` contract still holds.
+    """
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        try:
+            events.emit(
+                events.error(
+                    code="internal",
+                    message=f"cli parse error: {message}",
+                    recoverable=False,
+                )
+            )
+        except Exception:
+            # Emission must not swallow the underlying argparse error.
+            pass
+        super().error(message)  # writes usage + message to stderr, then sys.exit(2)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _SidecarParser(
         prog="kiln_trainer",
         description="Kiln Python sidecar — wraps MLX-LM for LoRA SFT/DPO, fuse, and generation.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    # parser_class propagates _SidecarParser to subparsers so missing/invalid
+    # flags on train/sample/export also emit a structured error event.
+    sub = parser.add_subparsers(
+        dest="command", required=True, metavar="COMMAND", parser_class=_SidecarParser
+    )
 
     _build_train_parser(sub)
     _build_sample_parser(sub)

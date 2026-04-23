@@ -148,5 +148,42 @@ Local, sidecar-internal decisions. Project-wide choices live in the root
 - **Reversible?** Yes; if we later upgrade mlx-lm to a 0.22+ line we
   re-evaluate both pins together.
 
+## L8. Sidecar IPC: argparse subcommands over stdin JSON loop
+
+- **Date:** 2026-04-23
+- **Context:** SPEC.md §11.2 originally mandated a stdin JSON-command loop,
+  with the sidecar running as a long-lived daemon that read
+  `{"cmd":"sft"|"dpo"|"fuse"|"generate"|"stop"}` one JSON object per line on
+  stdin. The M2 implementation instead uses argparse subcommands
+  (`train`, `sample`, `export`), each invoked as a short-lived process by the
+  Swift parent. The pre-merge verifier flagged the mismatch (T1).
+- **Options considered:**
+  - (a) **stdin JSON loop** — one long-running daemon per app session. Matches
+    SPEC §11.2 literally; `ready` is paid once per session. Adds daemon
+    management (crash restart, orphan cleanup, per-operation state bleed);
+    tangles SIGTERM semantics with which-operation-is-running; harder to
+    isolate in tests because the same process carries state across train →
+    sample → export.
+  - (b) **argparse short-lived subprocess** — one process per operation;
+    stdout JSON-line streaming preserved. Swift `Process()` handles
+    short-lived subprocesses cleanly with streaming stdout. Each operation is
+    independently testable against a fake binary. `ready` fires per-invocation
+    (≈50 ms, well under the 500 ms budget); diverges from SPEC §11.2 wording.
+- **Choice:** (b). The stdout event schema (SPEC §11.1 —
+  `ready`/`progress`/`checkpoint`/`sample`/`generation`/`error`/`done`) — the
+  part Swift actually parses — is unchanged.
+- **Reason:** Train / sample / export are naturally discrete operations;
+  sharing a process across them buys nothing. 111 tests already exercise the
+  argparse pattern end-to-end against real subprocess IPC with fake binaries
+  (`fake_trainer.py`, `fake_generator.py`, `fake_fuser.py`, `fake_ollama.py`,
+  `llama.cpp/convert_hf_to_gguf.py`). Rewriting those to a stdin-loop
+  protocol would be a day of churn with no functional gain.
+- **SPEC impact:** SPEC.md §11.2 is superseded by this entry. The inbound
+  schema stays in SPEC.md for historical reference; the live implementation
+  is the argparse CLI surface of `python -m kiln_trainer <train|sample|export>`.
+- **Reversible?** Yes — a future milestone can add an `mlx_lm.lora.serve`-style
+  `serve` subcommand alongside the discrete ones if cross-operation state ever
+  becomes load-bearing.
+
 <!-- Append new decisions below. Number sequentially with the `L` prefix to
 distinguish sidecar-local entries from root DECISIONS.md. -->

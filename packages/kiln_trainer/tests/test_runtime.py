@@ -81,3 +81,14 @@ def test_find_latest_adapter_returns_newest(tmp_path) -> None:
 def test_find_latest_adapter_handles_missing_dir(tmp_path) -> None:
     ghost = tmp_path / "does-not-exist"
     assert runtime.find_latest_adapter(ghost) is None
+
+
+def test_pipe_unavailable_error_is_runtime_error() -> None:
+    # Subcommands raise PipeUnavailableError instead of ``assert`` so the
+    # invariant survives ``python -O`` (where asserts are stripped). The
+    # exception type must be narrow enough to catch deliberately without
+    # swallowing unrelated bugs.
+    err = runtime.PipeUnavailableError("stdout handle missing")
+    assert isinstance(err, RuntimeError)
+    with pytest.raises(runtime.PipeUnavailableError, match="stdout handle missing"):
+        raise err

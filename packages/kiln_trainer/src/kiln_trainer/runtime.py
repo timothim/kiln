@@ -30,6 +30,16 @@ def log(message: str, **fields: Any) -> None:
     print(f"[kiln_trainer] {message}{suffix}", file=sys.stderr, flush=True)
 
 
+class PipeUnavailableError(RuntimeError):
+    """Raised when a ``subprocess.PIPE`` request did not yield a readable handle.
+
+    Should never happen — ``Popen`` with ``stdout=subprocess.PIPE`` always
+    produces a stream — but callers guard against it explicitly because plain
+    ``assert`` is stripped under ``python -O`` and we do not want silent
+    NoneType surprises downstream.
+    """
+
+
 _sigterm_event: threading.Event | None = None
 
 

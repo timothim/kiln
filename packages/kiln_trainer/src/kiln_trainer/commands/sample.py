@@ -71,7 +71,11 @@ def run(args: argparse.Namespace) -> int:
 
     out_q: queue.Queue[str | None] = queue.Queue()
     err_q: queue.Queue[str | None] = queue.Queue()
-    assert proc.stdout is not None and proc.stderr is not None
+    if proc.stdout is None or proc.stderr is None:
+        raise runtime.PipeUnavailableError(
+            f"generator subprocess missing pipe handles: "
+            f"stdout={proc.stdout!r}, stderr={proc.stderr!r}"
+        )
     threading.Thread(target=_drain, args=(proc.stdout, out_q), daemon=True).start()
     threading.Thread(target=_drain, args=(proc.stderr, err_q), daemon=True).start()
 
