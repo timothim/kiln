@@ -76,11 +76,11 @@ def main() -> None:
     print(f"  session_id={sid}")
 
     prompt = (
-        "Preflight. Run these three checks and print the results:\n"
-        "1) echo -n $ANTHROPIC_API_KEY | head -c 8   # first 8 chars of the API key should appear\n"
+        "Preflight. Run these three checks. Do NOT print the value of ANTHROPIC_API_KEY — presence only.\n"
+        "1) test -n \"$ANTHROPIC_API_KEY\" && echo API_KEY_PRESENT || echo API_KEY_MISSING\n"
         "2) cd /workspace/kiln && git log -1 --oneline  # should show a commit\n"
         "3) python -c \"from anthropic import Anthropic; c=Anthropic(); r=c.messages.create(model='claude-opus-4-7', max_tokens=10, messages=[{'role':'user','content':'ping'}]); print(r.content[0].text)\"\n"
-        "Print PREFLIGHT_OK as the final line if all three succeed, otherwise PREFLIGHT_FAIL with the failing step number."
+        "Print PREFLIGHT_OK as the final line if step 1 prints API_KEY_PRESENT and steps 2 and 3 succeed, otherwise PREFLIGHT_FAIL with the failing step number."
     )
     print("→ sending preflight message…")
     request("POST", f"/v1/sessions/{sid}/events", {"events": [{"type": "user.message", "content": prompt}]})

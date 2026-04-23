@@ -68,9 +68,14 @@ env/
 # --- Secrets / config (NEVER commit) ---
 .env
 .env.*
+*.env
 !.env.example
 *.pem
 *.key
+*.pat
+credentials
+credentials.*
+.secrets/
 secrets.yaml
 secrets.yml
 secrets.json
