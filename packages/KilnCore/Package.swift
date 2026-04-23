@@ -15,7 +15,11 @@ let package = Package(
     targets: [
         .target(
             name: "KilnCore",
-            path: "Sources/KilnCore"
+            path: "Sources/KilnCore",
+            swiftSettings: [
+                .unsafeFlags(["-warnings-as-errors"], .when(configuration: .debug)),
+                .unsafeFlags(["-warnings-as-errors"], .when(configuration: .release))
+            ]
         ),
         .testTarget(
             name: "KilnCoreTests",
