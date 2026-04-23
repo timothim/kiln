@@ -1,4 +1,5 @@
 import Foundation
+import KilnCore
 
 struct Project: Identifiable, Hashable {
     enum Size: String, CaseIterable, Hashable {
@@ -25,6 +26,7 @@ struct Project: Identifiable, Hashable {
     var lastTrained: Date?
     var keptChunks: Int?
     var totalChunks: Int?
+    var ingestReport: IngestReport?
 
     init(id: UUID = UUID(),
          name: String,
@@ -33,7 +35,8 @@ struct Project: Identifiable, Hashable {
          stage: ProjectStage = .readyToDrop,
          lastTrained: Date? = nil,
          keptChunks: Int? = nil,
-         totalChunks: Int? = nil) {
+         totalChunks: Int? = nil,
+         ingestReport: IngestReport? = nil) {
         self.id = id
         self.name = name
         self.folderName = folderName
@@ -42,6 +45,7 @@ struct Project: Identifiable, Hashable {
         self.lastTrained = lastTrained
         self.keptChunks = keptChunks
         self.totalChunks = totalChunks
+        self.ingestReport = ingestReport
     }
 
     /// Safe slug for terminal hand-off copy. Lowercase, alphanumerics and hyphens only.

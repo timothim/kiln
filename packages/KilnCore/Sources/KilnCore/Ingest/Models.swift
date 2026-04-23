@@ -127,6 +127,93 @@ public struct IngestReport: Codable, Sendable, Hashable {
     public init() {}
 }
 
+public enum IngestStage: String, Codable, Sendable, Hashable, CaseIterable {
+    case discovery
+    case parsing
+    case dedup
+    case quality
+    case writing
+}
+
+public struct IngestProgress: Sendable, Hashable {
+    public let stage: IngestStage
+    public let done: Int
+    public let total: Int
+
+    public init(stage: IngestStage, done: Int, total: Int) {
+        self.stage = stage
+        self.done = done
+        self.total = total
+    }
+
+    public var fraction: Double {
+        total > 0 ? min(1.0, Double(done) / Double(total)) : 0
+    }
+}
+
+public struct ChunkPreview: Sendable, Hashable, Identifiable {
+    public let id: UUID
+    public let sourcePath: String
+    public let kind: ChunkKind
+    public let assistantSnippet: String
+    public let userPromptSnippet: String
+
+    public init(
+        id: UUID = UUID(),
+        sourcePath: String,
+        kind: ChunkKind,
+        assistantSnippet: String,
+        userPromptSnippet: String
+    ) {
+        self.id = id
+        self.sourcePath = sourcePath
+        self.kind = kind
+        self.assistantSnippet = assistantSnippet
+        self.userPromptSnippet = userPromptSnippet
+    }
+
+    public static func from(_ chunk: Chunk, assistantLimit: Int = 180, userLimit: Int = 80) -> ChunkPreview {
+        ChunkPreview(
+            sourcePath: chunk.sourcePath,
+            kind: chunk.kind,
+            assistantSnippet: Self.snippet(chunk.assistantText, limit: assistantLimit),
+            userPromptSnippet: Self.snippet(chunk.userPrompt, limit: userLimit)
+        )
+    }
+
+    private static func snippet(_ s: String, limit: Int) -> String {
+        let collapsed = s
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        if collapsed.count <= limit { return collapsed }
+        let end = collapsed.index(collapsed.startIndex, offsetBy: limit)
+        return String(collapsed[..<end]) + "…"
+    }
+}
+
+public struct RunningCounts: Sendable, Hashable {
+    public var filesDiscovered: Int = 0
+    public var filesParsed: Int = 0
+    public var filesSkipped: Int = 0
+    public var chunksBeforeDedup: Int = 0
+    public var chunksAfterExactDedup: Int = 0
+    public var chunksAfterMinHashDedup: Int = 0
+    public var chunksAfterQuality: Int = 0
+    public var softRejected: QualityRejectionCounts = QualityRejectionCounts()
+    public var hardRejected: QualityRejectionCounts = QualityRejectionCounts()
+
+    public init() {}
+}
+
+public enum IngestEvent: Sendable {
+    case stageStarted(IngestStage)
+    case progress(IngestProgress)
+    case sample(ChunkPreview)
+    case runningCounts(RunningCounts)
+    case stageFinished(IngestStage)
+    case completed(IngestReport)
+}
+
 public struct IngestConfig: Sendable {
     public var userName: String
     public var minChunkChars: Int

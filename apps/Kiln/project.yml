@@ -14,6 +14,10 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 
+packages:
+  KilnCore:
+    path: ../../packages/KilnCore
+
 targets:
   Kiln:
     type: application
@@ -21,6 +25,8 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: Sources
+    dependencies:
+      - package: KilnCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kiln.app
@@ -34,3 +40,17 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
+  KilnTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Kiln
+      - package: KilnCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kiln.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
