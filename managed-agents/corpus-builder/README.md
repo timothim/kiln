@@ -1,8 +1,8 @@
 # Managed Agent — Distillation Orchestrator
 
-A Claude Managed Agent that runs the Opus-as-teacher labeling pass for Kiln's `quality-classifier` distilled component. Deployed as part of the April 2026 "Built with Opus 4.7" hackathon's *Best Use of Managed Agents* submission.
+A Claude Managed Agent that produces Opus-4.7 quality labels for Kiln's `quality-classifier` distilled component. Deployed as part of the April 2026 "Built with Opus 4.7" hackathon's *Best Use of Managed Agents* submission.
 
-Reference: [docs/managed-agents-cheatsheet.md](../../docs/managed-agents-cheatsheet.md) (compiled from the real Managed Agents documentation).
+Reference: [docs/managed-agents-cheatsheet.md](../../docs/managed-agents-cheatsheet.md) — every schema here is quoted from [platform.claude.com/docs/en/managed-agents](https://platform.claude.com/docs/en/managed-agents/overview).
 
 Directory history: this path was originally reserved for an "MCP Corpus Puller" agent that would pull authored content from Gmail/Notion/GitHub/Slack via MCP. That charter is deferred post-hackathon ([SPEC.md §8.3](../../SPEC.md)); the path now hosts the Distillation Orchestrator.
 
@@ -10,29 +10,27 @@ Directory history: this path was originally reserved for an "MCP Corpus Puller" 
 
 ## What it does
 
-Given a mounted JSONL of text snippets (one per line), the agent:
+Given `/workspace/input.jsonl` (one `{request_id, text}` per line), the managed agent — which **is** Opus 4.7 — scores every row directly in its own inference loop using the rubric embedded in `system-prompt.txt`. There is no subprocess calling the Anthropic API from inside the container; the container never sees an API key.
 
-1. Writes a Python script `/workspace/labeler.py` that calls `claude-opus-4-7` concurrently (20-way async fan-out, backoff on 429/5xx).
-2. Streams one label per input row to `runs/<ISO-UTC>/quality-labels.jsonl`, capturing score, reason, token counts, and raw Opus response.
-3. Writes a `run_manifest.json` with git SHA, timestamps, cost estimate, and label counts.
-4. Checks out `managed-agent/distillation-pilot`, commits the run directory, and pushes.
+The agent:
 
-Output format (one JSON row per label):
+1. `read`s `/workspace/input.jsonl`.
+2. In batches of ~50, produces `{request_id, text, score, reason}` for each row and `bash`-appends it to `/workspace/quality-labels.jsonl`. Emits a `PROGRESS {...}` `agent.message` after each batch.
+3. `write`s `/workspace/run_manifest.json` with counts, timestamps, and score distribution.
+4. Emits **one** final `agent.message` containing the full manifest + full labels JSONL between machine-readable markers (`RUN_MANIFEST_BEGIN/END`, `QUALITY_LABELS_BEGIN/END`, then `RUN_COMPLETE`). The developer's monitor script parses the markers and writes the output locally.
+
+Output row format (one JSON object per line):
 
 ```json
 {
   "request_id": "…",
   "text": "…",
-  "opus_response": { /* raw Messages-API response */ },
   "score": 0.83,
-  "reason": "…",
-  "latency_ms": 2840,
-  "input_tokens": 612,
-  "output_tokens": 38
+  "reason": "coherent first-person voice, short but complete thought"
 }
 ```
 
-The quality rubric used for each Opus sub-call comes from [`.claude/skills/distillation-pipeline/SKILL.md`](../../.claude/skills/distillation-pipeline/SKILL.md) §3.2 verbatim.
+The rubric used for scoring is the one in [`.claude/skills/distillation-pipeline/SKILL.md`](../../.claude/skills/distillation-pipeline/SKILL.md) §3.2, inlined verbatim in `system-prompt.txt`.
 
 ---
 
@@ -40,12 +38,12 @@ The quality rubric used for each Opus sub-call comes from [`.claude/skills/disti
 
 This is the workload profile Managed Agents exist for:
 
-- **Long-running.** 500-sample pilot: ~25 min wall clock; full 10k: ~8 h.
-- **Observable.** The judge submission screenshots the per-turn Console timeline.
-- **Secret-holding.** `ANTHROPIC_API_KEY` and the GitHub PAT live in the vault / resource mount — never on the developer's laptop, never in the repo.
-- **Resumable.** If a future invocation fails mid-way, the input JSONL is idempotent (keyed on `request_id`), and we can resume from the last-committed label.
+- **Long-running.** 500-sample pilot: ~25–40 min wall clock; full 10k: ~8–12 h.
+- **Observable.** The judge submission screenshots the per-turn Console timeline at `console.claude.com/sessions/{id}`.
+- **Reusable container.** Environment + agent are reusable across pilot, full run, and future preference-judge / style-extractor distillations.
+- **Cost-isolated.** Session-hour meter is visible; local-laptop runs aren't.
 
-It would be strictly worse to run this from a local `scripts/opus-distill/run.py` on Tim's laptop: no cloud observability, no cost isolation, no reusable container.
+It would be strictly worse to run this from `scripts/opus-distill/run.py` on Tim's laptop: no cloud observability, no cost isolation, no reusable configuration.
 
 ---
 
@@ -54,86 +52,94 @@ It would be strictly worse to run this from a local `scripts/opus-distill/run.py
 | File | Purpose |
 |---|---|
 | `agent.json` | Agent config (name, model, tools, metadata). System prompt is injected from `system-prompt.txt` at deploy time. |
-| `system-prompt.txt` | The operating instructions the agent follows. |
-| `environment.json` | Cloud container spec (Ubuntu + pip packages + network allowlist + 60-min wall timeout). |
-| `session.template.json` | Session creation body; `${VAR}` placeholders filled via `envsubst` at runtime. |
-| `inputs/pilot-500.jsonl` *(gitignored)* | The 500-row input for the pilot run. Generated deterministically by `scripts/opus-distill/build_pilot_input.py`. |
-| `runs/<ISO>/quality-labels.jsonl` | Labeled output, committed by the agent on `managed-agent/distillation-pilot`. |
-| `runs/<ISO>/run_manifest.json` | Run metadata (git SHA, timestamps, token counts, cost). |
+| `system-prompt.txt` | The operating instructions the agent follows — including the labeling rubric verbatim. |
+| `environment.json` | Cloud container spec: `{config: {type: "cloud", networking: {type: "unrestricted"}}}`. No pip packages needed (no in-container SDK). |
+| `session.template.json` | Session create body template. `${AGENT_ID}`, `${ENV_ID}`, `${INPUT_FILE_ID}` filled via `envsubst` at runtime. Uses `{type: "file"}` resource only. |
+| `inputs/pilot-500.jsonl` *(gitignored)* | The 500-row input for the pilot. Generated deterministically by `scripts/opus-distill/build_pilot_input.py`. |
+| `runs/<ISO>/quality-labels.jsonl` | Labeled output, written by the developer's monitor script after parsing the agent's final message. |
+| `runs/<ISO>/run_manifest.json` | Run metadata (timestamps, token counts, cost, score distribution). |
 
 Helper scripts live in `scripts/managed-agents/`:
 
-- `deploy.py` — create the agent + environment (idempotent; writes IDs to `/tmp/kiln-distill.env`).
-- `preflight.py` — 10-second verification session to confirm secrets and mounts work before the real run.
-- `monitor.py` — subscribes to the live event stream and prints progress + token cost.
+- `deploy.py` — `POST /v1/agents` + `POST /v1/environments` (writes `AGENT_ID`, `ENV_ID` to `/tmp/kiln-distill.env`).
+- `preflight.py` — 10-second verification session to confirm the agent, environment, and input file resource all resolve before the real run.
+- `monitor.py` — polls session events and prints progress + token totals.
 
 ---
 
 ## Deploying the pilot
 
-Prerequisites (one-time):
+The canonical step-by-step runbook is [.claude/plans/stateless-purring-quiche.md §5](../../.claude/plans/stateless-purring-quiche.md) — refer to it for the authoritative 12-step sequence with expected outputs, budget, and decision gate. Sketch below:
 
 ```bash
+# 0. Prereqs (one-time)
 brew install anthropics/tap/ant
+xattr -d com.apple.quarantine "$(brew --prefix)/bin/ant"
 ant auth login
-export ANTHROPIC_API_KEY=…                 # your org API key
-gh auth token > /tmp/github.pat            # PAT with `repo` scope
-```
+export ANTHROPIC_API_KEY="…"   # your org API key
 
-Deploy:
-
-```bash
-# 1. Build input locally
+# 1. Build the input file locally
 python scripts/opus-distill/build_pilot_input.py \
   --out managed-agents/corpus-builder/inputs/pilot-500.jsonl
+jq -s 'length' managed-agents/corpus-builder/inputs/pilot-500.jsonl   # expect 500 (or ~451 for the current dedup)
 
-# 2. Create vault with the API key
-export VAULT_ID=$(ant beta:vaults create \
-  --name kiln-distill-vault \
-  --secret ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  --json | jq -r '.id')
-
-# 3. Deploy agent + environment
+# 2. Deploy agent + environment
 python scripts/managed-agents/deploy.py
-source /tmp/kiln-distill.env               # exports AGENT_ID, ENV_ID
+source /tmp/kiln-distill.env                                           # AGENT_ID, ENV_ID
 
-# 4. Upload input
+# 3. Upload input file
 export INPUT_FILE_ID=$(ant beta:files upload \
-  managed-agents/corpus-builder/inputs/pilot-500.jsonl \
-  --json | jq -r '.id')
+  --file managed-agents/corpus-builder/inputs/pilot-500.jsonl \
+  --transform id --format yaml)
 
-# 5. Pre-flight (10s verification session)
+# 4. Pre-flight (cheap, ~1 min)
 python scripts/managed-agents/preflight.py
 
-# 6. Create + kickoff real session
-GITHUB_PAT="$(cat /tmp/github.pat)" \
-  envsubst < managed-agents/corpus-builder/session.template.json > /tmp/session.json
-export SESSION_ID=$(ant beta:sessions create -f /tmp/session.json --json | jq -r '.id')
-ant beta:sessions events send $SESSION_ID \
-  --type user.message \
-  --content "Begin the quality-classifier labeling pass. Follow the protocol in your system prompt exactly."
+# 5. Create session
+envsubst < managed-agents/corpus-builder/session.template.json > /tmp/session.json
+export SESSION_ID=$(ant beta:sessions create \
+  --agent "$AGENT_ID" --environment-id "$ENV_ID" \
+  --transform id --format yaml <<YAML
+resources:
+  - type: file
+    file_id: $INPUT_FILE_ID
+    mount_path: /workspace/input.jsonl
+metadata:
+  run: quality-pilot-500
+YAML
+)
+
+# 6. Kick off the run
+ant beta:sessions:events send --session-id "$SESSION_ID" <<'YAML'
+events:
+  - type: user.message
+    content:
+      - type: text
+        text: Begin the quality-classifier labeling pass. Follow the protocol in your system prompt exactly.
+YAML
+
+# 7. Monitor
+python scripts/managed-agents/monitor.py "$SESSION_ID"    # progress + cost
+open "https://console.claude.com/sessions/$SESSION_ID"    # console timeline
 ```
 
-Monitor:
+Cancel (if needed):
 
 ```bash
-ant beta:sessions events stream $SESSION_ID          # live
-python scripts/managed-agents/monitor.py $SESSION_ID # aggregated
-open "https://console.claude.com/sessions/$SESSION_ID"
+ant beta:sessions:events send --session-id "$SESSION_ID" \
+  <<<'events: [{type: user.interrupt}]'
 ```
 
-Stop:
+Retrieve output (after session reaches `idle` with a `RUN_COMPLETE` marker):
 
 ```bash
-ant beta:sessions events send $SESSION_ID --type user.interrupt
-```
+python scripts/managed-agents/monitor.py "$SESSION_ID" --extract
+# → writes managed-agents/corpus-builder/runs/<ISO>/{quality-labels.jsonl,run_manifest.json}
 
-Retrieve output:
-
-```bash
-git fetch origin
-git checkout managed-agent/distillation-pilot
-ls managed-agents/corpus-builder/runs/
+git checkout -b managed-agent/distillation-pilot
+git add managed-agents/corpus-builder/runs/
+git commit -m "feat(distill): quality pilot labels (500 samples)"
+git push -u origin managed-agent/distillation-pilot
 ```
 
 ---
@@ -142,12 +148,12 @@ ls managed-agents/corpus-builder/runs/
 
 | Dimension | Target | Hard stop |
 |---|---|---|
-| Wall clock | ≤ 25 min | 55 min (agent aborts) / 60 min (container timeout) |
-| Cost | ≤ $10 tokens + $0.03 container | $20 (agent aborts) |
-| Labels written | ≥ 495 / 500 | — |
-| Skipped after 3-retry | ≤ 5 | — |
+| Wall clock | ≤ 40 min | 50 min (agent aborts inside) |
+| Cost | ≤ $10 tokens + ~$0.05 container | $15 (caller interrupts if breached) |
+| Labels written | ≥ 99% of input | — |
+| JSON parse rate | ≥ 99% | — |
 
-Full pilot success criteria are in the plan: [.claude/plans/stateless-purring-quiche.md §6](../../.claude/plans/stateless-purring-quiche.md).
+Full pilot success criteria: [.claude/plans/stateless-purring-quiche.md §6](../../.claude/plans/stateless-purring-quiche.md).
 
 ---
 
@@ -155,9 +161,7 @@ Full pilot success criteria are in the plan: [.claude/plans/stateless-purring-qu
 
 - Pilot session ID: <!-- FILL after kickoff -->
 - Agent version deployed: <!-- FILL -->
-- Environment version: <!-- FILL -->
 - Pilot wall clock: <!-- FILL -->
 - Pilot cost: <!-- FILL -->
 - Labels written: <!-- FILL -->
 - Skipped: <!-- FILL -->
-- Branch URL: <!-- FILL -->

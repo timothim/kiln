@@ -1,333 +1,490 @@
 # Claude Managed Agents — Operating Cheatsheet
 
-Compiled 2026-04-23 from authoritative sources on `claude.com` and `platform.claude.com`. Research conducted for the Kiln hackathon Distillation Orchestrator (Best Use of Managed Agents submission). All URLs re-verified during compilation.
+**Docs-grounded rewrite** — every non-trivial schema / endpoint / flag on this page is quoted verbatim from [platform.claude.com/docs/en/managed-agents/*](https://platform.claude.com/docs/en/managed-agents/overview) as fetched 2026-04-23. Items marked `⚠️ derived` are inferences required to close a doc gap; the reason is given inline. Earlier iterations of this doc contained fabricated fields (`base_image`, `environment_variables`, `network_policy.mode`, `timeout_minutes`, `agent_id` on session bodies, vault env-var injection, `github_repository` resource type) — all removed.
 
-Scope: this is a working reference for designing + deploying Kiln's agent. It is not a substitute for the docs — when in doubt, re-fetch.
+Scope: operating reference for the Kiln Distillation Orchestrator pilot (500-sample quality-label run, Opus 4.7 as teacher).
 
 ---
 
-## 1. What Managed Agents are — and what makes them different
+## 1. Four primitives
 
-> "Claude Managed Agents let you run Claude agents on long-running, multi-step jobs in Anthropic-hosted environments… you hand off a job — building a corpus, running evals overnight, triaging a backlog — and Claude handles the machine, the retries, the file I/O, and the session state." — [claude.com/blog/claude-managed-agents](https://claude.com/blog/claude-managed-agents)
+> "An agent is a reusable, versioned configuration that defines persona and capabilities. It bundles the model, system prompt, tools, MCP servers, and skills that shape how Claude behaves during a session." — [agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
+>
+> "Environments define the container configuration where your agent runs. You create an environment once, then reference its ID each time you start a session. Multiple sessions can share the same environment, but each session gets its own isolated container instance." — [environments](https://platform.claude.com/docs/en/managed-agents/environments)
+>
+> "A session is a running agent instance within an environment. Each session references an agent and an environment (both created separately), and maintains conversation history across multiple interactions." — [sessions](https://platform.claude.com/docs/en/managed-agents/sessions)
 
-**Four core concepts** (from [/docs/en/managed-agents/overview](https://platform.claude.com/docs/en/managed-agents/overview)):
+| Primitive | Versioned? | Create endpoint |
+|---|---|---|
+| Agent | **Yes** (integer `version`, starts at 1, auto-increments on update) | `POST /v1/agents` |
+| Environment | **No** ("Environments are not versioned.") | `POST /v1/environments` |
+| Session | n/a (ephemeral; holds references) | `POST /v1/sessions` |
+| Vault | n/a | `POST /v1/vaults` |
 
-| Concept | What it is |
-|---|---|
-| **Agent** | A versioned config blob: model, system prompt, tools, MCP servers, skills, description. |
-| **Environment** | A cloud container template: OS, packages, networking policy. |
-| **Session** | A live instantiation of `agent × environment` with mounted resources (files, repos) and credentials (vaults). |
-| **Events** | The timeline inside a session — user messages, agent messages, thinking, tool use, status changes, token usage. |
-
-**Beta header** (required on every API call):
+**Beta header — required on every call:**
 
 ```
 anthropic-beta: managed-agents-2026-04-01
 ```
 
-Official SDKs bundle it automatically when you use the `beta.agents` / `beta.sessions` namespaces.
+Official SDKs attach it automatically when you use the `client.beta.*` namespaces.
 
 ---
 
-## 2. API surface and auth
+## 2. API surface
 
 - Base URL: `https://api.anthropic.com`
-- Auth: `x-api-key: $ANTHROPIC_API_KEY` (standard org key — no separate grant).
+- Auth: `x-api-key: $ANTHROPIC_API_KEY` (standard org key)
+- Version: `anthropic-version: 2023-06-01`
 - Content-Type: `application/json`
-- Idempotency: `anthropic-idempotency-key: <uuid>` supported on POSTs to /agents, /environments, /sessions.
-
-**Rate limits** (org-wide, from overview page):
-- 300 creates/min (agents, environments, sessions combined)
-- 600 reads/min
-
-**SDKs** with first-class support (as of April 2026 announcement): Python, TypeScript, Java, Go, C#, PHP, Ruby. Plus the `ant` CLI — `brew install anthropics/tap/ant`.
+- SDKs with first-class support: Python, TypeScript, Java, Go, C#, PHP, Ruby
+- CLI: `ant` — `brew install anthropics/tap/ant` then `xattr -d com.apple.quarantine "$(brew --prefix)/bin/ant"` on macOS. Auth: `ant auth login`.
 
 ---
 
-## 3. Agent configuration
+## 3. Agent create — verbatim
 
-Endpoint: `POST /v1/agents` — [/docs/en/managed-agents/agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
+Endpoint: `POST /v1/agents` — [agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
 
-Body fields:
-
-```jsonc
-{
-  "name": "distillation-orchestrator",        // required
-  "model": "claude-opus-4-7",                 // required; 4.5+ supported
-  "system": "You are …",                      // system prompt
-  "tools": [
-    {"type": "agent_toolset_20260401"},       // bash+read+write+edit+glob+grep+web_fetch+web_search
-    // custom tools: {"type": "custom", "name": "...", "description": "...", "input_schema": {...}}
-  ],
-  "mcp_servers": [
-    {"type": "url", "name": "github", "url": "https://api.githubcopilot.com/mcp/"}
-  ],
-  "skills": [
-    {"type": "anthropic", "skill_id": "xlsx"},                          // Anthropic-hosted
-    {"type": "custom", "skill_id": "skill_01…", "version": "v1"}        // org-uploaded
-  ],
-  "callable_agents": [                                                  // Research Preview, access-gated
-    {"type": "agent", "id": "agnt_01…", "version": 3}
-  ],
-  "description": "…",
-  "metadata": {"project": "kiln"}
-}
+```bash
+curl -fsSL https://api.anthropic.com/v1/agents \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d '{
+    "name": "Coding Assistant",
+    "model": "claude-opus-4-7",
+    "system": "You are a helpful coding agent.",
+    "tools": [{"type": "agent_toolset_20260401"}]
+  }'
 ```
 
-**Versioning:** agents are immutable per-version. `PATCH /v1/agents/{id}` bumps the version; existing sessions keep the pinned version; new sessions default to latest unless you pin `agent_version`.
+### 3.1 All documented fields
 
-**Tool group:** `agent_toolset_20260401` exposes `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `web_fetch`, `web_search`. Individual tools can be disabled by listing only the ones you want (see [/docs/en/managed-agents/tools](https://platform.claude.com/docs/en/managed-agents/tools)).
-
----
-
-## 4. Environments
-
-Endpoint: `POST /v1/environments` — [/docs/en/managed-agents/environments](https://platform.claude.com/docs/en/managed-agents/environments)
-
-```jsonc
-{
-  "name": "kiln-distillation-env",
-  "base_image": "anthropic/ubuntu:latest",    // default — Ubuntu 22.04, Python 3.11, node 20
-  "packages": {
-    "apt":  ["curl", "jq"],
-    "pip":  ["anthropic>=0.40.0", "jsonlines"],
-    "npm":  []
-  },
-  "environment_variables": {
-    "PYTHONUNBUFFERED": "1"
-  },
-  "network_policy": {
-    "mode": "allowlist",                       // "open" | "allowlist" | "none"
-    "allowed_hosts": ["api.anthropic.com", "api.github.com"]
-  },
-  "timeout_minutes": 60                        // hard wall-clock cap
-}
-```
-
-Environments are also versioned. Key operational note: `network_policy.mode: "none"` still allows `api.anthropic.com` implicitly — the agent must be able to reach Claude.
-
----
-
-## 5. Sessions
-
-Endpoint: `POST /v1/sessions` — [/docs/en/managed-agents/sessions](https://platform.claude.com/docs/en/managed-agents/sessions)
-
-```jsonc
-{
-  "agent_id":       "agnt_01…",
-  "agent_version":  3,                         // optional; latest if omitted
-  "environment_id": "env_01…",
-  "vault_ids":      ["vault_01…"],             // secrets, see §9
-  "resources": [
-    {"type": "file", "file_id": "file_01…", "mount_path": "/workspace/input.jsonl"},
-    {"type": "github_repository",
-     "url": "https://github.com/timtvn/kiln",
-     "mount_path": "/workspace/kiln",
-     "authorization_token": "ghp_…",          // PAT with repo scope
-     "branch": "managed-agent/distillation-pilot"}
-  ],
-  "metadata": {"run": "quality-pilot-500"}
-}
-```
-
-**Status lifecycle:** `idle → running → idle` per turn; terminal states `terminated`, `error`. Also `rescheduling` while the container is warming a fresh host.
-
-**Streaming:** `GET /v1/sessions/{id}/stream` (SSE). Events are also persisted and can be paged via `GET /v1/sessions/{id}/events?limit=…`.
-
-**Send input events:** `POST /v1/sessions/{id}/events` with a list of `user.*` events (`user.message`, `user.custom_tool_result`, `user.interrupt`, `user.tool_confirmation`).
-
-**Archive vs delete:**
-- `POST /v1/sessions/{id}/archive` — preserves history, tears down container.
-- `DELETE /v1/sessions/{id}` — removes session + events + container.
-
-**Interrupt** (for cancelling a run): send a `user.interrupt` event. The agent stops at its next tool call boundary.
-
----
-
-## 6. Events and streaming
-
-Source: [/docs/en/managed-agents/events-and-streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
-
-| Type | Direction | Meaning |
+| Field | Required | Notes |
 |---|---|---|
-| `user.message` | in | Text prompt to the agent. |
-| `user.custom_tool_result` | in | Return value for a pending custom tool. |
-| `user.interrupt` | in | Cancel the current turn. |
-| `user.tool_confirmation` | in | Approve a tool use that was gated. |
-| `agent.message` | out | Assistant text. |
-| `agent.thinking` | out | Extended-thinking trace (if enabled). |
-| `agent.tool_use` | out | Agent invoking a built-in or custom tool. |
-| `agent.mcp_tool_use` | out | Agent invoking an MCP tool. |
-| `session.status_running` / `session.status_idle` | out | Status changes. |
-| `session.error` | out | Unrecoverable error. |
-| `span.model_request_end` | out | Carries `model_usage.input_tokens` / `output_tokens` / `cache_*`. |
+| `name` | **yes** | Human-readable name. |
+| `model` | **yes** | String (e.g. `"claude-opus-4-7"`) OR object `{"id": "claude-opus-4-6", "speed": "fast"}` for fast mode. "All Claude 4.5 and later models are supported." |
+| `system` | no | System prompt. Clearable by passing `null`. |
+| `tools` | no | Array. Combines pre-built, MCP, and custom tools. Array is fully replaced on update. |
+| `mcp_servers` | no | Array; fully replaced on update. |
+| `skills` | no | Array; max 20/session; fully replaced on update. |
+| `callable_agents` | no | Research Preview (access-gated). One level deep. |
+| `description` | no | Clearable by passing `null`. |
+| `metadata` | no | Arbitrary k/v. Merged on update (empty string deletes a key). |
 
-Python SDK streaming pattern:
+### 3.2 Update semantics (from [agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup))
 
-```python
-with client.beta.sessions.events.stream(session.id) as stream:
-    client.beta.sessions.events.send(session.id, events=[{"type": "user.message", "content": "go"}])
-    for ev in stream:
-        match ev.type:
-            case "agent.message":        handle_text(ev)
-            case "agent.tool_use":       handle_tool(ev)
-            case "span.model_request_end": track_usage(ev)
-            case "session.status_idle":  break
-            case "session.error":        raise RuntimeError(ev)
+> "Omitted fields are preserved. … Array fields (tools, mcp_servers, skills, callable_agents) are fully replaced by the new array. To clear an array field entirely, pass null or an empty array. … Metadata is merged at the key level. … No-op detection. If the update produces no change relative to the current version, no new version is created and the existing version is returned."
+
+Pass `version` to ensure you're updating from a known state (optimistic concurrency).
+
+### 3.3 `ant` CLI form
+
+```bash
+ant beta:agents create \
+  --name "Coding Assistant" \
+  --model '{id: claude-opus-4-7}' \
+  --system "You are a helpful coding agent." \
+  --tool '{type: agent_toolset_20260401}'
 ```
 
 ---
 
-## 7. Files
+## 4. Environment create — verbatim
 
-Source: [/docs/en/managed-agents/files](https://platform.claude.com/docs/en/managed-agents/files)
+Endpoint: `POST /v1/environments` — [environments](https://platform.claude.com/docs/en/managed-agents/environments)
 
-- Upload: `POST /v1/files` (multipart). Returns `file_id`.
-- Mount in session via `resources: [{type: "file", file_id, mount_path}]`.
-- **Mounted files are read-only copies.** The agent cannot modify them.
-- Max **100 files per session**.
-- List files scoped to a session: `GET /v1/files?scope_id={session_id}` — returns files the agent **wrote** (via `write_file` tool) that were saved under `/workspace/outputs/` or similar.
-- Download: `GET /v1/files/{file_id}/content` → raw bytes.
+```bash
+curl -fsS https://api.anthropic.com/v1/environments \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  --data @- <<'EOF'
+{
+  "name": "data-analysis",
+  "config": {
+    "type": "cloud",
+    "packages": {
+      "pip": ["pandas", "numpy", "scikit-learn"],
+      "npm": ["express"]
+    },
+    "networking": {"type": "unrestricted"}
+  }
+}
+EOF
+```
 
-Session-scoped file retrieval is how we pull the labelled JSONL back out after the pilot.
+### 4.1 Top-level fields
+
+- `name` — string, must be unique within the org + workspace.
+- `config` — the only structural field. `config.type` must currently be `"cloud"`.
+
+**There is no `base_image`, no `environment_variables`, no `timeout_minutes`, no top-level `network_policy`.** Any of those in older plans are fabricated.
+
+### 4.2 Packages
+
+> "When multiple package managers are specified, they run in alphabetical order (apt, cargo, gem, go, npm, pip). You can optionally pin specific versions; the default is latest."
+
+Supported keys (each maps to a list of strings):
+
+| Field | Manager | Example entry |
+|---|---|---|
+| `apt` | apt-get | `"ffmpeg"` |
+| `cargo` | Rust | `"ripgrep@14.0.0"` |
+| `gem` | Ruby | `"rails:7.1.0"` |
+| `go` | Go modules | `"golang.org/x/tools/cmd/goimports@latest"` |
+| `npm` | Node.js | `"express@4.18.0"` |
+| `pip` | Python | `"pandas==2.2.0"` |
+
+### 4.3 Networking
+
+> "The `networking` field controls the container's outbound network access. It does not impact the `web_search` or `web_fetch` tools' allowed domains."
+
+| Mode | Description |
+|---|---|
+| `unrestricted` | "Full outbound network access, except for a general safety blocklist. This is the default." |
+| `limited` | "Restricts container network access to the `allowed_hosts` list. Further access is enabled via the `allow_package_managers` and `allow_mcp_servers` bool." |
+
+For `limited`:
+- `allowed_hosts` — list of domains. "These must be HTTPS-prefixed."
+- `allow_mcp_servers` — bool, default `false`.
+- `allow_package_managers` — bool, default `false`.
+
+### 4.4 Environment variable injection — ❌ **NOT SUPPORTED**
+
+The environment config has no field for setting container env vars. `ANTHROPIC_API_KEY` cannot be injected into the container via any documented mechanism. Plan accordingly: if the agent needs to call Claude, it must do so **via its own agent loop (it IS Opus)** — not by shelling out to the SDK.
+
+### 4.5 Lifecycle
+
+> "Environments are not versioned. If you frequently update your environments, you may want to log these updates on your side, to map environment state with sessions."
+
+- Archive (read-only, existing sessions continue): `POST /v1/environments/{id}/archive`
+- Delete (only if no sessions reference it): `DELETE /v1/environments/{id}`
+
+### 4.6 `ant` CLI form
+
+```bash
+ant beta:environments create \
+  --name "python-dev" \
+  --config '{type: cloud, networking: {type: unrestricted}}'
+```
 
 ---
 
-## 8. GitHub repositories
+## 5. Session create — verbatim
 
-Source: [/docs/en/managed-agents/github](https://platform.claude.com/docs/en/managed-agents/github)
+Endpoint: `POST /v1/sessions` — [sessions](https://platform.claude.com/docs/en/managed-agents/sessions)
 
-```jsonc
+```bash
+curl -fsSL https://api.anthropic.com/v1/sessions \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d @- <<EOF
 {
-  "type": "github_repository",
-  "url": "https://github.com/timtvn/kiln",
-  "mount_path": "/workspace/kiln",
-  "authorization_token": "ghp_<pat>",
-  "branch": "managed-agent/distillation-pilot",
-  "depth": 1
+  "agent": "$AGENT_ID",
+  "environment_id": "$ENVIRONMENT_ID"
+}
+EOF
+```
+
+### 5.1 Top-level fields
+
+| Field | Required | Notes |
+|---|---|---|
+| `agent` | **yes** | String (= latest version) OR object `{"type": "agent", "id": "...", "version": N}` for pinning. **Not `agent_id`.** |
+| `environment_id` | **yes** | Environment ID. |
+| `vault_ids` | no | Array of vault IDs. Purpose: MCP credential injection (see §8). |
+| `resources` | no | Array of mounted resources. |
+| `metadata` | no | Arbitrary k/v. |
+
+### 5.2 Resources — the only documented type is `file`
+
+From [files](https://platform.claude.com/docs/en/managed-agents/files):
+
+```json
+{
+  "resources": [
+    {"type": "file", "file_id": "file_abc123", "mount_path": "/workspace/data.csv"}
+  ]
 }
 ```
 
-- PAT scopes needed: `repo` (full) to both clone private + push. `public_repo` is insufficient for pushing to a private fork.
-- The agent gets a normal git working copy — it can `git add / commit / push` via the `bash` tool.
-- Token rotation: `PATCH /v1/sessions/{id}/resources` with `{resource_index: N, authorization_token: "<new>"}`.
-- Only one `github_repository` resource per session is permitted at time of writing (April 2026).
+- `mount_path` is optional; if omitted, the agent sees the file by its uploaded filename.
+- "A maximum of 100 files is supported per session."
+- **Mounted files are read-only copies.** "The agent can read them but cannot modify the original uploaded file. To work with modified versions, the agent writes to new paths within the container."
+
+#### 5.2.1 `github_repository` resource type — ⚠️ not publicly documented
+
+A `github_repository` variant appears in the Java SDK's `resources.list` response discriminator (`.asGitHubRepository()` on [files](https://platform.claude.com/docs/en/managed-agents/files) manage-section), but **no schema or example is documented** — [github-repositories](https://platform.claude.com/docs/en/managed-agents/github-repositories) returns 404. **Do not use for the pilot.**
+
+### 5.3 Status lifecycle
+
+From [sessions](https://platform.claude.com/docs/en/managed-agents/sessions):
+
+| Status | Meaning |
+|---|---|
+| `idle` | "Agent is waiting for input, including user messages or tool confirmations. Sessions start in `idle`." |
+| `running` | "Agent is actively executing." |
+| `rescheduling` | "Transient error occurred, retrying automatically." |
+| `terminated` | "Session has ended due to an unrecoverable error." |
+
+> "Creating a session provisions the environment and agent but does not start any work. To delegate a task, send events to the session using a user event."
+
+### 5.4 Send events (kick off work)
+
+`POST /v1/sessions/{id}/events` — body has `events: [...]`. **`content` is an ARRAY of content blocks, not a string:**
+
+```json
+{
+  "events": [
+    {
+      "type": "user.message",
+      "content": [{"type": "text", "text": "List the files in the working directory."}]
+    }
+  ]
+}
+```
+
+### 5.5 Interrupt / archive / delete
+
+- Interrupt (stop the current turn): send a `user.interrupt` event.
+- Archive: `POST /v1/sessions/{id}/archive` — "prevents new events from being sent while preserving its history".
+- Delete: `DELETE /v1/sessions/{id}` — "A `running` session cannot be deleted; send an interrupt event if you need to delete it immediately."
+
+### 5.6 `ant` CLI form (resources in YAML on stdin)
+
+```bash
+SESSION_ID=$(ant beta:sessions create \
+  --agent "$AGENT_ID" \
+  --environment-id "$ENVIRONMENT_ID" \
+  --transform id --format yaml <<EOF
+resources:
+  - type: file
+    file_id: $FILE_ID
+    mount_path: /workspace/data.csv
+EOF
+)
+```
 
 ---
 
-## 9. Vaults (secrets & MCP auth)
+## 6. Files (I/O across the session boundary)
 
-Source: [/docs/en/managed-agents/mcp-connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)
+Source: [files](https://platform.claude.com/docs/en/managed-agents/files)
 
-- `POST /v1/vaults` creates a named secret store.
-- Secrets are keyed by MCP server `name` on the agent.
-- When a session is created with `vault_ids: [...]`, any MCP server whose `name` has a matching key receives its auth header from the vault.
-- Vaults are org-scoped and never exposed in event payloads — redacted as `<redacted:vault>`.
+### 6.1 Upload
 
-We don't need vaults for the quality-classifier pilot — Claude is the only model called, and its API key is session-wide via `x-api-key`.
+```bash
+FILE_ID=$(ant beta:files upload \
+  --file data.csv \
+  --transform id --format yaml)
+```
+
+Or curl:
+
+```bash
+file=$(curl --fail-with-body -sS -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  https://api.anthropic.com/v1/files \
+  -F file=@data.csv)
+```
+
+### 6.2 List files scoped to a session
+
+```bash
+curl -fsSL "https://api.anthropic.com/v1/files?scope_id=sesn_abc123" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01"
+```
+
+### 6.3 Download a file
+
+```bash
+curl -fsSL "https://api.anthropic.com/v1/files/$FILE_ID/content" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -o output.txt
+```
+
+### 6.4 Managing resources on a live session
+
+- Add: `POST /v1/sessions/{id}/resources` — returns `{id: "sesrsc_01ABC..."}`.
+- List: `GET /v1/sessions/{id}/resources`.
+- Delete: `DELETE /v1/sessions/{id}/resources/{resource_id}`.
+
+### 6.5 Recovering agent-generated output — ⚠️ derived
+
+The files doc shows `scope_id=sesn_abc123` on `/v1/files` returns files associated with the session. It lists mounted input copies explicitly. It does **not** explicitly state whether files the agent writes inside the container (e.g. `/workspace/outputs/foo.jsonl`) are automatically scoped to the session and listable via the same endpoint.
+
+**For the pilot we treat this as untested and use a guaranteed-to-work fallback: the agent emits its output as text in its final `agent.message`**, which we stream back and parse locally. If post-pilot testing confirms container-written files appear under `scope_id=sesn_...`, we switch to file-based retrieval for the full 10k run.
 
 ---
 
-## 10. Skills
+## 7. Events and streaming
 
-Source: [/docs/en/managed-agents/skills](https://platform.claude.com/docs/en/managed-agents/skills)
+Source: [events-and-streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
 
-- **Anthropic-hosted skills:** `{type: "anthropic", skill_id: "xlsx" | "pdf" | ...}` — no upload needed.
-- **Custom skills:** authored like Claude Code skills (a folder with `SKILL.md` + resources), zipped, uploaded via `POST /v1/skills`, referenced as `{type: "custom", skill_id, version}`.
-- Max **20 skills per session**.
-- Skills are loaded lazily by the model — declaring one is cheap; the skill folder is only materialized into the container if the agent decides to activate it.
+### 7.1 Event types
 
-**Kiln note:** our `distillation-pipeline` skill is a Claude Code skill, not a Managed Agents skill. For the pilot we inline its §3.2 rubric into the agent's system prompt. Post-pilot, if the rubric grows, we upload it as a custom Managed Agents skill.
+| Direction | Type | Purpose |
+|---|---|---|
+| in | `user.message` | Text prompt. `content` is a list of content blocks. |
+| in | `user.interrupt` | Cancel current turn. |
+| in | `user.custom_tool_result` | Return value for a custom tool call. |
+| in | `user.tool_confirmation` | Approve a gated tool use. |
+| in | `user.define_outcome` | Define structured outcome for the session. |
+| out | `agent.message` | Assistant text. |
+| out | `agent.thinking` | Extended-thinking trace. |
+| out | `agent.tool_use` | Agent invoking a built-in tool. |
+| out | `agent.tool_result` | Tool output returned to the agent. |
+| out | `agent.mcp_tool_use` | Agent invoking an MCP tool. |
+| out | `agent.mcp_tool_result` | MCP tool output. |
+| out | `agent.custom_tool_use` | Agent invoking a custom tool. |
+| out | `span.model_request_end` | Carries `model_usage` with token counts. |
+
+### 7.2 Stream vs. paginate
+
+- Stream (SSE): `GET /v1/sessions/{id}/stream`
+- Paginate: `GET /v1/sessions/{id}/events?limit=N&after=<sequence_number>`
+
+Either way, the completion marker for "turn finished" is the session status transitioning back to `idle` — either via a status event or by re-reading session status (`GET /v1/sessions/{id}`).
 
 ---
 
-## 11. Multi-agent (callable_agents)
+## 8. Vaults — MCP credentials only
 
-Source: [/docs/en/managed-agents/multi-agent](https://platform.claude.com/docs/en/managed-agents/multi-agent)
+Source: [vaults](https://platform.claude.com/docs/en/managed-agents/vaults)
 
-- **Research Preview** — access is gated via an access-request form. Assume we don't have it unless we've checked.
-- Calls are **one level deep** — a callable agent cannot itself call other callable agents.
-- Callable agents get their own session + environment; the parent pays for both.
+> "If your agent uses MCP tools that require authentication, pass `vault_ids` at session creation to reference a vault containing stored OAuth credentials. Anthropic manages token refresh on your behalf."
 
-For the pilot we use a single agent. No subagents.
+### 8.1 What a vault can hold
+
+A vault stores **credentials bound to MCP server URLs**, not arbitrary secrets. Each credential has:
+- `auth_type`: `mcp_oauth` (with refresh) **or** `static_bearer` (long-lived token).
+- `mcp_server_url`: the MCP server the credential authenticates against.
+
+Max 20 credentials per vault, one per `mcp_server_url`. Secrets are write-only after creation.
+
+### 8.2 What a vault **cannot** do — ❌ scope-out
+
+- Vaults cannot inject arbitrary environment variables into the container.
+- There is **no mechanism** in any documented primitive for passing `ANTHROPIC_API_KEY` (or any non-MCP secret) into the container's shell env.
+- Kiln's distillation pilot therefore does **not** use a vault — the managed agent itself is Opus 4.7 and does not need the SDK or an API key inside the container.
 
 ---
 
-## 12. Observability & tracing
+## 9. Tools — `agent_toolset_20260401`
 
-Source: [/docs/en/managed-agents/observability](https://platform.claude.com/docs/en/managed-agents/observability) (page title: "Session tracing")
+Source: [tools](https://platform.claude.com/docs/en/managed-agents/tools)
 
-- **Claude Console** has a per-session timeline view at `console.claude.com/sessions/{id}` — Developers and Admins only.
+Declaring `{"type": "agent_toolset_20260401"}` on the agent gives it:
+- `bash` (run shell commands)
+- `read` / `write` / `edit` (file I/O in the container)
+- `glob` / `grep` (search)
+- `web_fetch` / `web_search` (external content, independent of container networking)
+
+Per-tool configs can be passed via `configs: {...}` or one `default_config: {...}` on the toolset entry. Default permission policy is `always_allow`.
+
+---
+
+## 10. Observability
+
+Source: [observability](https://platform.claude.com/docs/en/managed-agents/observability) — page title *Session tracing*.
+
+- Per-session timeline: `https://console.claude.com/sessions/{session_id}` (Developers and Admins only).
 - This is what we screenshot for the judge submission.
-- Token usage per turn is in `span.model_request_end.model_usage`: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
-- Cost is not exposed directly per session — we aggregate tokens × published rates.
-- Errors surface as `session.error` events with a `code` and `message`.
+- Token usage per model call: `span.model_request_end.model_usage` → `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+- Cost is not reported directly — aggregate tokens × [published rates](https://www.anthropic.com/pricing) locally.
+- Errors surface as `session` status transitions to `terminated` + any `session.error`-like events.
 
 ---
 
-## 13. Pricing
+## 11. Pricing
 
-Source: [claude.com/blog/claude-managed-agents](https://claude.com/blog/claude-managed-agents)
+From the Managed Agents announcement:
 
-> "Managed Agents is billed at **$0.08 per session-hour** for the container, plus standard Claude token rates for every `messages` call the agent makes."
-
-- Session-hour meter starts on `session.status_running` and stops on `session.status_idle` (per turn).
-- A session that's been created but has no running turn is not billed on the container side.
-- The per-hour rate is prorated to the second.
-
-For our 500-sample pilot (rough math, before running): ~500 × (800 in + 80 out tokens) × Opus-4.7 rates ≈ $6–10 in tokens; ~30–45 min container ≈ $0.04–0.06 session-hour cost. Total pilot budget: **< $15** all-in.
+- **$0.08/session-hour** for the container.
+- Standard Claude token rates apply to every model call the agent makes. Opus 4.7 as of 2026-04: $15/M input, $75/M output.
+- Container meter: runs while the session is `running`; paused in `idle`. Prorated to the second.
 
 ---
 
-## 14. `ant` CLI quick reference
+## 12. Rate limits
 
-Install: `brew install anthropics/tap/ant`
-Auth: `ant auth login` (uses your console API key).
+Per-org, from the overview page:
+- 300 create ops/min (agents + environments + sessions combined).
+- 600 read ops/min.
+
+Irrelevant for a single pilot session.
+
+---
+
+## 13. `ant` CLI quick reference
 
 | Action | Command |
 |---|---|
-| Create an agent from JSON | `ant beta:agents create -f agent.json` |
-| List agents | `ant beta:agents list` |
-| Create an environment | `ant beta:envs create -f env.json` |
-| Create a session | `ant beta:sessions create -f session.json` |
-| Send a user message | `ant beta:sessions events send <id> --type user.message --content "…"` |
-| Stream events | `ant beta:sessions events stream <id>` |
-| List events (paginated) | `ant beta:sessions events list <id> --format jsonl` |
-| Interrupt a session | `ant beta:sessions events send <id> --type user.interrupt` |
-| Upload a file | `ant beta:files upload input.jsonl` |
-| Download a session-scoped file | `ant beta:files download <file_id> -o out.jsonl` |
-| Delete a session | `ant beta:sessions delete <id>` |
+| Auth | `ant auth login` |
+| Create agent | `ant beta:agents create --name N --model M --system S --tool T` |
+| Update agent | `ant beta:agents update --agent-id ID --version V --system S` |
+| List agent versions | `ant beta:agents:versions list --agent-id ID` |
+| Archive agent | `ant beta:agents archive --agent-id ID` |
+| Create environment | `ant beta:environments create --name N --config '{...}'` |
+| Retrieve environment | `ant beta:environments retrieve --environment-id ID` |
+| Archive environment | `ant beta:environments archive --environment-id ID` |
+| Delete environment | `ant beta:environments delete --environment-id ID` |
+| Create session | `ant beta:sessions create --agent ID --environment-id ID` (resources via `<<YAML` stdin) |
+| Retrieve session | `ant beta:sessions retrieve --session-id ID` |
+| Send user message | `ant beta:sessions:events send --session-id ID <<YAML ... YAML` |
+| Interrupt session | `ant beta:sessions:events send --session-id ID --type user.interrupt` |
+| List session resources | `ant beta:sessions:resources list --session-id ID` |
+| Add session resource | `ant beta:sessions:resources create --session-id ID --type file --file-id FID` |
+| Delete session resource | `ant beta:sessions:resources delete --session-id ID --resource-id RID` |
+| Archive session | `ant beta:sessions archive --session-id ID` |
+| Delete session | `ant beta:sessions delete --session-id ID` |
+| Upload file | `ant beta:files upload --file PATH --transform id --format yaml` |
+| List session-scoped files | `ant beta:files list --scope-id SID --beta managed-agents-2026-04-01` |
+| Download file | `ant beta:files download --file-id FID --output PATH` |
 
-The CLI is a thin wrapper over REST — anything you can do with `curl` you can do with `ant`.
+`--transform id --format yaml` extracts just the `id` field — clean for shell variable capture.
 
 ---
 
-## 15. Kiln-specific design notes (carry into the plan)
+## 14. URLs (verified 2026-04-23)
 
-- **The existing `managed-agents/corpus-builder/agent.yaml` uses a Kubernetes-style `apiVersion: claude.com/v1` schema that does not match the real Managed Agents API.** It also references non-existent CLI commands (`claude agents deploy`). Rewrite required.
-- **Scope conflict:** `CLAUDE_USAGE.md §6.1` documents `corpus-builder` as the MCP-puller agent (Gmail/Notion/GitHub/Slack → JSONL). Repurposing that name for the Distillation Orchestrator collides with that charter. **Recommendation:** create a new directory `managed-agents/distillation-orchestrator/` and leave `corpus-builder` as-is (pending a separate charter update in CLAUDE_USAGE.md at the end of the sprint).
-- **Sidecar-to-Opus concurrency cap:** our distillation SKILL.md mandates 20 in-flight requests. The agent runs turn-by-turn, so we enforce concurrency at the bash script level inside the container, not at the session level.
-- **Write-back strategy:** mount the repo as a `github_repository` resource on the branch `managed-agent/distillation-pilot`; the agent commits + pushes on completion. This preserves the Console timeline for judges *and* leaves an audit trail in the repo.
-- **Token budget cap:** we set a hard cost cap in the agent's bash script (reads `$BUDGET_USD` env var, aborts if exceeded), in addition to the environment `timeout_minutes` wall clock.
+- [/overview](https://platform.claude.com/docs/en/managed-agents/overview)
+- [/quickstart](https://platform.claude.com/docs/en/managed-agents/quickstart)
+- [/agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
+- [/environments](https://platform.claude.com/docs/en/managed-agents/environments)
+- [/sessions](https://platform.claude.com/docs/en/managed-agents/sessions)
+- [/events-and-streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+- [/tools](https://platform.claude.com/docs/en/managed-agents/tools)
+- [/files](https://platform.claude.com/docs/en/managed-agents/files)
+- [/vaults](https://platform.claude.com/docs/en/managed-agents/vaults)
+- [/skills](https://platform.claude.com/docs/en/managed-agents/skills)
+- [/mcp-connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)
+- [/multi-agent](https://platform.claude.com/docs/en/managed-agents/multi-agent)
+- [/observability](https://platform.claude.com/docs/en/managed-agents/observability)
+- [/cloud-containers](https://platform.claude.com/docs/en/managed-agents/cloud-containers)
+
+### Known 404 (for future reference — do not reference in live code)
+
+- [/github-repositories](https://platform.claude.com/docs/en/managed-agents/github-repositories) → 404 as of 2026-04-23.
 
 ---
 
-## 16. URLs cross-reference (all verified 2026-04-23)
+## 15. Kiln pilot design — grounded implications
 
-- [claude.com/blog/claude-managed-agents](https://claude.com/blog/claude-managed-agents) — announcement
-- [/docs/en/managed-agents/overview](https://platform.claude.com/docs/en/managed-agents/overview)
-- [/docs/en/managed-agents/quickstart](https://platform.claude.com/docs/en/managed-agents/quickstart)
-- [/docs/en/managed-agents/agent-setup](https://platform.claude.com/docs/en/managed-agents/agent-setup)
-- [/docs/en/managed-agents/environments](https://platform.claude.com/docs/en/managed-agents/environments)
-- [/docs/en/managed-agents/sessions](https://platform.claude.com/docs/en/managed-agents/sessions)
-- [/docs/en/managed-agents/events-and-streaming](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
-- [/docs/en/managed-agents/tools](https://platform.claude.com/docs/en/managed-agents/tools)
-- [/docs/en/managed-agents/skills](https://platform.claude.com/docs/en/managed-agents/skills)
-- [/docs/en/managed-agents/files](https://platform.claude.com/docs/en/managed-agents/files)
-- [/docs/en/managed-agents/github](https://platform.claude.com/docs/en/managed-agents/github)
-- [/docs/en/managed-agents/mcp-connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)
-- [/docs/en/managed-agents/observability](https://platform.claude.com/docs/en/managed-agents/observability)
-- [/docs/en/managed-agents/multi-agent](https://platform.claude.com/docs/en/managed-agents/multi-agent)
-
-Unrelated but checked for overlap:
-- [claude.com/blog/the-advisor-strategy](https://claude.com/blog/the-advisor-strategy) — about the `advisor_20260301` tool on the Messages API, not Managed Agents.
+1. **The managed agent IS Opus 4.7** — the agent loop itself does the labeling via `user.message` + its own inference. No Python subprocess, no in-container `anthropic` SDK call, no `ANTHROPIC_API_KEY` needed in the container.
+2. **Input → file resource** — `pilot-500.jsonl` uploaded via Files API, mounted as `{type: "file", file_id, mount_path: "/workspace/input.jsonl"}`.
+3. **Output → agent message text** — the agent emits the full `quality-labels.jsonl` contents as text in its final `agent.message`. The developer's monitor script parses and saves it locally. (We also have the agent `write` it to `/workspace/quality-labels.jsonl` as a belt-and-suspenders; if files scoped to `sesn_...` turn out to be listable post-run, we switch to that for the full 10k.)
+4. **Git write-back happens on the developer's machine**, not from the container. After the session reaches `idle` with a complete run, `git checkout -b managed-agent/distillation-pilot && git add managed-agents/corpus-builder/runs/... && git commit && git push`.
+5. **No vault needed** — per §8 we have no MCP servers and no non-MCP secret to inject.
+6. **Environment is minimal** — `{name, config: {type: "cloud", networking: {type: "unrestricted"}}}`. No package pre-install required (the agent uses its `write` / `read` tools, which don't need pip deps). Networking is `unrestricted` because the agent's `bash` may be used for small utility work — tighten to `limited` after the pilot if audit required.

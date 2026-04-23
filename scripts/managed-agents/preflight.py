@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Preflight: 10-second session that verifies the agent can see ANTHROPIC_API_KEY,
-can reach /workspace/kiln as a git repo, and can call Opus once.
+"""Preflight: short session that verifies the agent + environment + mounted input
+resolve correctly before spending real tokens on the 500-sample pilot.
 
-Exits non-zero on any assertion failure so the caller can abort before spending
-real tokens on the 500-sample pilot.
+No API key is required inside the container. This agent is Opus 4.7 and labels rows
+in its own inference loop; the container has no ANTHROPIC_API_KEY and doesn't need one.
 
-Environment (required):
-  ANTHROPIC_API_KEY, AGENT_ID, ENV_ID, VAULT_ID, GITHUB_PAT
+Environment (required on the caller):
+  ANTHROPIC_API_KEY, AGENT_ID, ENV_ID, INPUT_FILE_ID
 """
 import json
 import os
-import pathlib
 import sys
 import time
 import urllib.error
@@ -44,74 +43,88 @@ def request(method: str, path: str, body: dict | None = None) -> dict:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        sys.exit(f"{method} {path} → {e.code} {e.reason}\n{e.read().decode(errors='replace')}")
+        sys.exit(f"{method} {path} -> {e.code} {e.reason}\n{e.read().decode(errors='replace')}")
 
 
 def main() -> None:
     agent_id = _env("AGENT_ID")
     env_id = _env("ENV_ID")
-    vault_id = _env("VAULT_ID")
-    github_pat = _env("GITHUB_PAT")
+    input_file_id = _env("INPUT_FILE_ID")
 
     session_body = {
-        "agent_id": agent_id,
+        "agent": agent_id,
         "environment_id": env_id,
-        "vault_ids": [vault_id],
         "resources": [
             {
-                "type": "github_repository",
-                "url": "https://github.com/timothim/kiln",
-                "mount_path": "/workspace/kiln",
-                "authorization_token": github_pat,
-                "branch": "main",
-                "depth": 1,
+                "type": "file",
+                "file_id": input_file_id,
+                "mount_path": "/workspace/input.jsonl",
             }
         ],
         "metadata": {"run": "preflight"},
     }
 
-    print("→ creating preflight session…")
+    print("-> creating preflight session...")
     sesn = request("POST", "/v1/sessions", session_body)
     sid = sesn["id"]
     print(f"  session_id={sid}")
 
-    prompt = (
-        "Preflight. Run these three checks. Do NOT print the value of ANTHROPIC_API_KEY — presence only.\n"
-        "1) test -n \"$ANTHROPIC_API_KEY\" && echo API_KEY_PRESENT || echo API_KEY_MISSING\n"
-        "2) cd /workspace/kiln && git log -1 --oneline  # should show a commit\n"
-        "3) python -c \"from anthropic import Anthropic; c=Anthropic(); r=c.messages.create(model='claude-opus-4-7', max_tokens=10, messages=[{'role':'user','content':'ping'}]); print(r.content[0].text)\"\n"
-        "Print PREFLIGHT_OK as the final line if step 1 prints API_KEY_PRESENT and steps 2 and 3 succeed, otherwise PREFLIGHT_FAIL with the failing step number."
+    prompt_text = (
+        "Preflight. Do these three checks and report PREFLIGHT_OK on a single line if all pass, "
+        "or PREFLIGHT_FAIL step <N> <reason> if any fails. Do not print secrets.\n"
+        "1) bash: test -f /workspace/input.jsonl && head -1 /workspace/input.jsonl | head -c 200\n"
+        "2) bash: wc -l /workspace/input.jsonl\n"
+        "3) Confirm the mounted file is read-only by attempting: bash: touch /workspace/input.jsonl "
+        "(expected: permission denied — report that as 'step 3 ok: read-only confirmed')."
     )
-    print("→ sending preflight message…")
-    request("POST", f"/v1/sessions/{sid}/events", {"events": [{"type": "user.message", "content": prompt}]})
 
-    print("→ polling for completion (up to 180s)…")
+    print("-> sending preflight message...")
+    request(
+        "POST",
+        f"/v1/sessions/{sid}/events",
+        {
+            "events": [
+                {
+                    "type": "user.message",
+                    "content": [{"type": "text", "text": prompt_text}],
+                }
+            ]
+        },
+    )
+
+    print("-> polling for completion (up to 180s)...")
     deadline = time.time() + 180
     final_text = ""
-    seen_idle = False
     last_seen = 0
-    while time.time() < deadline:
+    done = False
+    while time.time() < deadline and not done:
         events = request("GET", f"/v1/sessions/{sid}/events?limit=50&after={last_seen}")
         for e in events.get("data", []):
-            last_seen = e.get("sequence_number", last_seen)
-            t = e.get("type", "")
-            if t == "agent.message":
-                final_text += e.get("content", "")
-            if t == "session.status_idle":
-                seen_idle = True
-        if seen_idle:
+            seq = e.get("sequence_number")
+            if seq is not None:
+                last_seen = seq
+            if e.get("type") == "agent.message":
+                content = e.get("content", [])
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            final_text += block.get("text", "")
+                elif isinstance(content, str):
+                    final_text += content
+        # Stop when the session returns to idle (cheap re-check; costs one read).
+        status = request("GET", f"/v1/sessions/{sid}").get("status")
+        if status in ("idle", "terminated") and final_text:
+            done = True
             break
         time.sleep(3)
 
     print("\n--- agent output ---\n" + final_text + "\n---\n")
     if "PREFLIGHT_OK" in final_text:
-        print("→ preflight passed")
-        # Archive the session; we don't need it
+        print("-> preflight passed")
         request("POST", f"/v1/sessions/{sid}/archive", {})
         sys.exit(0)
-    else:
-        print("→ preflight FAILED")
-        sys.exit(1)
+    print("-> preflight FAILED")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

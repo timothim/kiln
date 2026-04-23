@@ -57,25 +57,23 @@ def main() -> None:
     agent["system"] = (AGENT_DIR / "system-prompt.txt").read_text()
     env = json.loads((AGENT_DIR / "environment.json").read_text())
 
-    print(f"→ POST /v1/agents  name={agent['name']} model={agent['model']}")
+    print(f"-> POST /v1/agents  name={agent['name']} model={agent['model']}")
     agent_resp = post("/v1/agents", agent, api_key)
     agent_id = agent_resp.get("id")
     agent_version = agent_resp.get("version", "?")
     print(f"  agent_id={agent_id} version={agent_version}")
 
-    print(f"→ POST /v1/environments  name={env['name']}")
+    print(f"-> POST /v1/environments  name={env['name']}")
     env_resp = post("/v1/environments", env, api_key)
     env_id = env_resp.get("id")
-    env_version = env_resp.get("version", "?")
-    print(f"  env_id={env_id} version={env_version}")
+    print(f"  env_id={env_id}  (environments are not versioned)")
 
     OUT_ENV.write_text(
         f"export AGENT_ID={agent_id}\n"
         f"export AGENT_VERSION={agent_version}\n"
         f"export ENV_ID={env_id}\n"
-        f"export ENV_VERSION={env_version}\n"
     )
-    print(f"→ wrote {OUT_ENV}")
+    print(f"-> wrote {OUT_ENV}")
     print("Next: source /tmp/kiln-distill.env && upload the input JSONL.")
 
 
