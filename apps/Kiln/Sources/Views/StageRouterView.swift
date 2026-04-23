@@ -37,7 +37,22 @@ struct StageRouterView: View {
                 }
             }
         case .preparing:
-            PrepareStageView(project: project)
+            PrepareStageView(
+                project: project,
+                model: model.prepareModel,
+                onCancel: { model.cancelPrepare() },
+                onContinue: {
+                    withAnimation(Kiln.Motion.standard) {
+                        model.continueToTraining(projectID: project.id)
+                    }
+                },
+                onReset: {
+                    withAnimation(Kiln.Motion.standard) {
+                        model.resetPrepare()
+                        model.updateStage(of: project.id, to: .readyToDrop)
+                    }
+                }
+            )
         case .training:
             TrainStageView(project: project)
         case .complete:

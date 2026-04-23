@@ -127,6 +127,95 @@ public struct IngestReport: Codable, Sendable, Hashable {
     public init() {}
 }
 
+public enum IngestStage: String, Codable, Sendable, Hashable, CaseIterable {
+    case discovery
+    case parsing
+    case dedup
+    case quality
+    case writing
+}
+
+public struct IngestProgress: Sendable, Hashable {
+    public let stage: IngestStage
+    public let done: Int
+    public let total: Int
+
+    public init(stage: IngestStage, done: Int, total: Int) {
+        self.stage = stage
+        self.done = done
+        self.total = total
+    }
+
+    public var fraction: Double {
+        total > 0 ? min(1.0, Double(done) / Double(total)) : 0
+    }
+}
+
+public struct ChunkPreview: Sendable, Hashable, Identifiable {
+    public let id: UUID
+    public let sourcePath: String
+    public let kind: ChunkKind
+    public let assistantSnippet: String
+    public let userPromptSnippet: String
+
+    /// Combined hard cap of 200 chars (ellipsis inclusive): 120 for the
+    /// assistant snippet, 80 for the user prompt. Enforced at construction.
+    public init(
+        id: UUID = UUID(),
+        sourcePath: String,
+        kind: ChunkKind,
+        assistantSnippet: String,
+        userPromptSnippet: String
+    ) {
+        self.id = id
+        self.sourcePath = sourcePath
+        self.kind = kind
+        self.assistantSnippet = Self.snippet(assistantSnippet, limit: 120)
+        self.userPromptSnippet = Self.snippet(userPromptSnippet, limit: 80)
+    }
+
+    public static func from(_ chunk: Chunk) -> ChunkPreview {
+        ChunkPreview(
+            sourcePath: chunk.sourcePath,
+            kind: chunk.kind,
+            assistantSnippet: chunk.assistantText,
+            userPromptSnippet: chunk.userPrompt
+        )
+    }
+
+    private static func snippet(_ s: String, limit: Int) -> String {
+        let collapsed = s
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        if collapsed.count <= limit { return collapsed }
+        let end = collapsed.index(collapsed.startIndex, offsetBy: limit - 1)
+        return String(collapsed[..<end]) + "…"
+    }
+}
+
+public struct RunningCounts: Sendable, Hashable {
+    public var filesDiscovered: Int = 0
+    public var filesParsed: Int = 0
+    public var filesSkipped: Int = 0
+    public var chunksBeforeDedup: Int = 0
+    public var chunksAfterExactDedup: Int = 0
+    public var chunksAfterMinHashDedup: Int = 0
+    public var chunksAfterQuality: Int = 0
+    public var softRejected: QualityRejectionCounts = QualityRejectionCounts()
+    public var hardRejected: QualityRejectionCounts = QualityRejectionCounts()
+
+    public init() {}
+}
+
+public enum IngestEvent: Sendable {
+    case stageStarted(IngestStage)
+    case progress(IngestProgress)
+    case sample(ChunkPreview)
+    case runningCounts(RunningCounts)
+    case stageFinished(IngestStage)
+    case completed(IngestReport)
+}
+
 public struct IngestConfig: Sendable {
     public var userName: String
     public var minChunkChars: Int

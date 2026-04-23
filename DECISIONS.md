@@ -120,4 +120,16 @@ Format for every entry:
 - **Reason:** It's the only stance that satisfies *both* the hackathon criterion and SPEC §1's privacy promise. It also unlocks the two special-prize submissions ("Most Creative Opus 4.7 Exploration" via distillation; "Best Use of Claude Managed Agents" via the two agents) without contradicting the runtime constraint. Codifying it here means no future session needs to re-litigate the direction when the next integration temptation arises.
 - **Reversible?** Yes but painful — reversal requires removing the three enforcement points above, adding network entitlements to the app sandbox, and rewriting the distillation story. Not anticipated within the sprint or post-hackathon roadmap.
 
+## 9. M4 rescope: Dataset Doctor + pipeline↔UI integration ships now; Style profile panel deferred to M7–M8
+
+- **Date:** 2026-04-23
+- **Context:** SPEC §12 M4 originally named "Style profile panel (2h)". By the time M3 shipped (static SwiftUI shell), M2 had delivered the full ingest pipeline but left its UI-surface half unbuilt — the Dataset Doctor spec in SPEC §10.1 had no deliverable. Meanwhile M4 as specced was a 2-hour polish task gated by a not-yet-built Style-extractor CoreML artifact (SPEC §6 component #2). Literal execution would have shipped a Style panel on top of an invisible pipeline.
+- **Options considered:**
+  - Ship SPEC M4 literally — Style profile panel with no visible pipeline feedback. Weak demo narrative; no live drop → stage transitions → Dataset Doctor moment.
+  - Hybrid — minimal progress bar plus Style panel. Scope creeps past 2h; integration stays half-baked.
+  - Rescope M4 to close the pipeline↔UI loop end-to-end: streaming API on `IngestPipeline`, `PrepareModel` state machine, `IngestProgressView`, three-tier `DatasetDoctorView`, cancellation, empty/error states.
+- **Choice:** Option 3. SPEC §12 M4 row updated to "Pipeline ↔ UI integration (Dataset Doctor)". Style profile panel re-pointed to M7–M8 alongside the Style-extractor distillation work.
+- **Reason:** Style profile panel requires the Style-extractor artifact, which does not exist until the distillation milestones (M7/M8). Landing the panel in M4 would ship a card fed by dummy data. Closing the pipeline↔UI loop instead uses M4's budget for work that unblocks every subsequent user-facing milestone and whose success criterion is verifier-checkable on every merge (streaming-report equality against the synchronous `run()` API).
+- **Reversible?** Yes — when M7/M8 lands the Style-extractor, the Style Signature Card inherits the `DatasetDoctorView` layout pattern and plugs in as a sibling panel. No schema or file-format change.
+
 <!-- Append new decisions below as the sprint progresses. Number sequentially. Do not edit entries above. -->

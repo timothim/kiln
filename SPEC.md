@@ -355,7 +355,7 @@ Each milestone has a success criterion and a time budget. Milestones are enforce
 | M1 | Sidecar heartbeat | 3h | Swift spawns Python; `ready` event received; `stop` shuts down cleanly |
 | M2 | Ingest + Dedup | 4h | Drop 500 MB folder; dedup + counts displayed in Dataset Doctor |
 | M3 | Quality classifier wired | 3h | Distilled artifact loads; Kiln shows filtered count |
-| M4 | Style profile panel | 2h | Style-extractor loaded; card renders with real data |
+| M4 | Pipeline ↔ UI integration (Dataset Doctor) | 1d | Drop → live counts → Dataset Doctor → Continue CTA; cancellation + empty/error states covered. Style profile panel re-pointed to M7–M8 alongside the Style-extractor (see DECISIONS §9). |
 | M5 | SFT end-to-end | 6h | User can press *Teach*; training runs; progress events render |
 | M6 | Growing Model panel | 3h | Three prompts updating every 50 iters during training |
 | M7 | DPO + Fuse | 3h | DPO pass completes; fused adapter saved |
@@ -390,7 +390,7 @@ Hackathon runs Tuesday April 21 → Sunday April 26, 2026. Submission Sunday 8:0
 | Day | Morning | Afternoon | Evening |
 |---|---|---|---|
 | **Tue Apr 21** | M0 scaffold merged; plan M1 | M1 sidecar heartbeat; Opus distillation kicked off in parallel (labels streaming) | M2 ingest path |
-| **Wed Apr 22** | M3 quality classifier ship | M4 style profile panel | M5 SFT end-to-end (may spill) |
+| **Wed Apr 22** | M3 quality classifier ship | M4 pipeline ↔ UI integration | M5 SFT end-to-end (may spill) |
 | **Thu Apr 23** | Finish M5; start M6 Growing Model panel | M7 DPO + Fuse | First full end-to-end run overnight |
 | **Fri Apr 24** | M8 GGUF + Ollama export | Eval Matrix Runner managed agent deployed | First demo rehearsal at 8pm |
 | **Sat Apr 25** | M9 polish sweep: `/polish` every view | `/demo-check` closes gaps | Second rehearsal; record raw takes |
