@@ -1,0 +1,72 @@
+%% Kiln — multi-agent decomposition
+%% Four context-scoped worktrees land on main. Every merge spawns a
+%% fresh-context verifier subagent. A separate dev-time-only lane
+%% (Opus 4.7 teacher + managed agents) feeds assets into the repo
+%% but never touches the shipping app.
+%%
+%% Render: npx -y @mermaid-js/mermaid-cli -i multi-agent.mmd -o multi-agent.png -b transparent -t default
+
+flowchart LR
+    subgraph devLane["dev-time only — never in shipping app"]
+        direction TB
+        opus["Opus 4.7 API<br/>(scripts/opus-*)"]
+        corpusAgent["Managed Agent:<br/>corpus-builder<br/>(cron, disabled by default)"]
+        evalAgent["Managed Agent:<br/>eval-matrix-runner<br/>(cron, nightly)"]
+        distilled["distilled/*<br/>(teacher→student outputs,<br/>checked into repo)"]
+        evalReports["docs/eval/*<br/>(nightly metrics,<br/>regression issues)"]
+        opus --> distilled
+        corpusAgent -->|writes| localCorpus[("~/Library/Application Support/<br/>Kiln/corpus/")]
+        evalAgent --> evalReports
+    end
+
+    subgraph worktrees["context-scoped worktrees (one Claude Code session each)"]
+        direction TB
+        wtUI["feat/ui<br/>apps/Kiln"]
+        wtCore["feat/core<br/>packages/KilnCore"]
+        wtTrainer["feat/trainer<br/>packages/kiln_trainer"]
+        wtDistill["feat/distill<br/>scripts/opus-* + distilled/"]
+    end
+
+    subgraph skills["Claude Code skills (.claude/skills/, load on demand)"]
+        direction TB
+        sMLX["mlx-lora-finetuning"]
+        sSwiftUI["swiftui-polish-kiln"]
+        sDemo["kiln-demo-recording"]
+        sDistill["distillation-pipeline"]
+        sMac["macos-data-sources"]
+        sInterp["interpretability-helpers"]
+    end
+
+    wtUI -.loads.-> sSwiftUI
+    wtUI -.loads.-> sMac
+    wtUI -.loads.-> sInterp
+    wtCore -.loads.-> sMac
+    wtCore -.loads.-> sInterp
+    wtTrainer -.loads.-> sMLX
+    wtDistill -.loads.-> sDistill
+    wtDistill -.loads.-> sMLX
+
+    wtUI -->|PR| main[("main<br/>(green only)")]
+    wtCore -->|PR| main
+    wtTrainer -->|PR| main
+    wtDistill -->|PR| main
+    distilled -.checked in.-> main
+
+    main -->|merge trigger| verifier{{"Verifier subagent<br/>fresh context, read-only<br/>Tiers 1-4"}}
+    verifier -->|PASS| shipped["Kiln.app<br/>(shipping runtime:<br/>Swift + MLX sidecar + Ollama,<br/>zero network calls)"]
+    verifier -->|FAIL| fix["Human fixup<br/>or revert"]
+    fix --> main
+
+    evalReports -.informs.-> fix
+
+    classDef dev fill:#fef3c7,stroke:#ca8a04,color:#78350f;
+    classDef wt fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef skill fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef runtime fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef gate fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+
+    class opus,corpusAgent,evalAgent,distilled,evalReports,localCorpus dev;
+    class wtUI,wtCore,wtTrainer,wtDistill wt;
+    class sMLX,sSwiftUI,sDemo,sDistill,sMac,sInterp skill;
+    class shipped runtime;
+    class verifier,main,fix gate;

@@ -105,4 +105,19 @@ Format for every entry:
 - **Reason:** System framework (not SPM), mandated by SPEC, no credible alternative in scope for the sprint. The spirit of the CLAUDE rule is "no unexamined third-party deps"; an Apple-shipped framework under explicit SPEC mandate meets that bar.
 - **Reversible?** Yes — swap for a custom detector if SPEC §5.3 ever drops the language gate.
 
+## 8. Runtime stays local; Claude lives in the build workflow
+
+- **Date:** 2026-04-23
+- **Context:** The hackathon criterion is *"Built with Opus 4.7,"* which is easy to misread as "call Opus at runtime." The tempting interpretation would put Opus behind a key in the shipping app — maximally visible, minimally creative, and directly at odds with Kiln's privacy premise (SPEC §1). The opposite extreme — Claude used only as a coding assistant that disappears at submission — leaves the creative-Opus-use axis and the Managed-Agents axis on the table. We needed a stance both interpretations can point to, so future sessions, the verifier subagent, and the submission narrative all agree.
+- **Options considered:**
+  - **Opus at runtime** (API key behind a settings pane) — simplest, most direct, actively bad for Kiln specifically: violates the "nothing leaves the Mac" promise, contradicts the three distilled components' existence, loses the distillation story. Also forbidden by root CLAUDE.md's YOU-MUST list.
+  - **Claude only as coding assistant** — used Claude Code for implementation, stop there. Fine product, weak submission: no creative-Opus axis, no Managed Agents axis, no reason the multi-worktree+verifier+skills environment is load-bearing.
+  - **Runtime stays local; Claude lives in the build workflow** (chosen) — shipping binary makes zero network calls; Claude usage is concentrated in: (a) multi-worktree context split with a fresh-context verifier on every merge, (b) six on-demand skills + seven slash commands + three hooks shaping the repo, (c) Opus-4.7 as dev-time teacher producing three distilled CoreML/LoRA artifacts that ship inside Kiln, (d) two Managed Agents (`corpus-builder`, `eval-matrix-runner`) handling long-running jobs a session can't.
+- **Choice:** Option 3. Formalized as the organizing principle of `CLAUDE_USAGE.md` and enforced by three independent mechanisms:
+  1. Root `CLAUDE.md` YOU-MUST: *"Never call an Anthropic, OpenAI, or any remote API from the shipped Kiln.app runtime. All Opus 4.7 usage is dev-time only, under scripts/opus-* and distilled/."*
+  2. Verifier subagent Tier-1 item 3 (`.claude/agents/verifier.md`): *"You never approve a change that leaks an API at runtime, even if nominal tests pass. That rule is absolute."*
+  3. `/ship` slash command — pre-submission gate that fails if `rg -n 'anthropic|opus|claude' apps/ packages/` returns any runtime-path hit.
+- **Reason:** It's the only stance that satisfies *both* the hackathon criterion and SPEC §1's privacy promise. It also unlocks the two special-prize submissions ("Most Creative Opus 4.7 Exploration" via distillation; "Best Use of Claude Managed Agents" via the two agents) without contradicting the runtime constraint. Codifying it here means no future session needs to re-litigate the direction when the next integration temptation arises.
+- **Reversible?** Yes but painful — reversal requires removing the three enforcement points above, adding network entitlements to the app sandbox, and rewriting the distillation story. Not anticipated within the sprint or post-hackathon roadmap.
+
 <!-- Append new decisions below as the sprint progresses. Number sequentially. Do not edit entries above. -->

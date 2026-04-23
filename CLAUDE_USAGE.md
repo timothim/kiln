@@ -1,241 +1,277 @@
-# How Kiln Was Built With Claude
+# How Kiln was built with Claude
 
-> *"please explain exactly how you used Claude to build your app because that's what you'll be graded on"* — Anthropic, hackathon kickoff.
-
-This document exists because the hackathon's **Opus 4.7 Use** criterion (25% of the grade) rewards creative, non-obvious uses of Claude, and the **Best Use of Claude Managed Agents** special prize rewards long-running production work. Kiln uses Claude in **seven distinct modes** across the 5-day sprint. Each section below maps to a judging criterion, with evidence collected live during the sprint. Placeholders marked `<!-- FILL DURING SPRINT -->` are populated by Claude Code as milestones close.
+> *Submission note for the "Built with Opus 4.7" hackathon (21–26 Apr 2026).*
+> *Judging weights: Impact 30 / Demo 25 / Opus 4.7 Use 25 / Depth & Execution 20.*
+> *This document targets the 25% Opus-Use axis and the two special prizes (Most Creative Opus Exploration, Best Use of Claude Managed Agents). It is intentionally factual; marketing language lives elsewhere.*
 
 ---
 
-## 1. Multi-agent architecture
+## 1. Executive summary
 
-We treat Claude Code not as a single coding assistant but as a **small org**. The implementation runs in four parallel worktrees, one per context boundary (not one per role).
+Kiln is a native macOS app that fine-tunes a local LLM to sound like its user from a folder they drop onto it. Full specification in [SPEC.md](SPEC.md). The shipping app — `apps/Kiln`, `packages/KilnCore`, `packages/kiln_trainer`, the fused adapter loaded into Ollama — runs entirely on the user's Apple Silicon. It makes zero network calls. Opus 4.7, and Claude generally, do not exist inside the compiled product.
 
-### 1.1 Context-centric worktree decomposition
+They exist exhaustively in the build workflow. Across the five-day sprint, Claude Code holds four context-scoped worktrees (UI, KilnCore, trainer, distill), loads one of six domain-specific skills on demand, runs work through seven slash commands, gates every commit through three hooks, and — critically — runs a fresh-context verifier subagent on every merge to `main`. In parallel, Opus 4.7 is used as a teacher: it labels a few thousand examples at dev time, and those labels train three small local models (`quality-classifier`, `preference-judge`, `style-extractor`) that ship inside Kiln as CoreML / LoRA artifacts. The user's Mac inherits Opus's judgment without ever calling it.
 
-Per the Anthropic blog: *"the most successful multi-agent systems split by context, not by function — one agent holds the Swift context, another holds the Python context; they do not split into planner/implementer/tester/reviewer pipelines, which multiply handoff cost without reducing context pressure."* <https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them>
+Two Claude Managed Agents handle the work that doesn't fit inside a single interactive session. `corpus-builder` pulls user-authorized content from Gmail, Notion, GitHub, and Slack via MCP servers and normalizes it to the JSONL format Kiln ingests. `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. Both are authored as YAML specs in `managed-agents/` and run against their respective MCP surfaces; neither runs inside the shipping app.
 
-Our worktrees:
+The organizing principle throughout is that the **runtime stays local, and Claude lives in the build workflow.** Every dev-time tool earns its place by either producing an asset that's checked into the repo (weights, fixtures, eval reports), shaping code before it merges (skills, commands, hooks, verifier), or keeping a long-running job healthy without blocking a human (managed agents). None of them reach through the compiled app to a network endpoint at user runtime. That constraint is enforced by the verifier subagent (`.claude/agents/verifier.md` §T1 item 3, "no runtime API calls") and by the explicit scope rules in `CLAUDE.md`.
 
-| Worktree | Branch pattern | Holds context for | Claude Code role |
+This document covers nine axes of that usage: multi-agent decomposition (§2), the verifier pattern with a real case study (§3), the skills/commands/hooks environment (§4), Opus-as-teacher distillation (§5), Claude Managed Agents (§6), the ten product features Claude enabled (§7), an honest human-vs-Claude breakdown (§8), and a live metrics dashboard (§9). Numbers are current as of the time of writing (2026-04-23, end of day 3 of 5); lines marked with `<!-- FILL -->` are updated at each milestone close by `/milestone N`.
+
+---
+
+## 2. Multi-agent decomposition
+
+Kiln runs as four Claude Code sessions in parallel git worktrees, not four prompts to one session. The split is **context-based**, not role-based — one session per file tree it has to care about, not one session per engineering function. This was a deliberate decision ([DECISIONS.md §3](DECISIONS.md)) made after reading Anthropic's guidance that role-pipeline splits (planner → implementer → tester → reviewer) pay repeated context-reload costs and introduce handoff friction for no real benefit at this scale.
+
+| Worktree | Branch prefix | File scope | Skills typically loaded |
 |---|---|---|---|
-| `kiln.ui` | `m*-ui-*` | SwiftUI views, view models, design system | frontend implementation |
-| `kiln.core` | `m*-core-*` | KilnCore swift package, data pipeline, IPC | middleware implementation |
-| `kiln.trainer` | `m*-trainer-*` | Python sidecar, MLX-LM orchestration | trainer implementation |
-| `kiln.distill` | `m*-distill-*` | Opus labeling, small-model training, distilled artifacts | dev-time Opus work |
+| feat/ui | `m*-ui-*` | `apps/Kiln/**` | swiftui-polish-kiln, interpretability-helpers |
+| feat/core | `m*-core-*` | `packages/KilnCore/**` | macos-data-sources, interpretability-helpers |
+| feat/trainer | `m*-trainer-*` | `packages/kiln_trainer/**` | mlx-lora-finetuning |
+| feat/distill | `m*-distill-*` | `scripts/opus-*`, `distilled/**` | distillation-pipeline, mlx-lora-finetuning |
 
-Merges land on `main` through PRs. Every merge triggers the **verifier subagent** (see §5) in a fresh context — that is the only non-context-centric Claude invocation we allow, because verification is most reliable when the context is fresh.
+Each worktree has its own `CLAUDE.md` (imported from the sub-tree) plus the root `CLAUDE.md`, so the session loads exactly the rules it needs. Merges to `main` are the only coordination point. After each merge, the **verifier subagent** spawns in a fresh context — the only non-context-centric Claude invocation allowed in the whole workflow, because a fresh reader catches what an implementer who has rationalized their choices cannot (§3).
 
-### 1.2 Diagram
-
-<!-- FILL DURING SPRINT: paste final docs/architecture/overview.svg -->
-
-```
-  [kiln.ui]----+
-               |                                   +-> main  --merge--> verifier (fresh ctx)
-  [kiln.core]--+--PRs--> [review subagent]---------+
-               |                                   |
-  [kiln.trainer]+                                  |
-               |                                   |
-  [kiln.distill]+                                  |
-```
-
-### 1.3 Commit statistics
-
-- Worktree `kiln.ui` commits: <!-- FILL -->
-- Worktree `kiln.core` commits: <!-- FILL -->
-- Worktree `kiln.trainer` commits: <!-- FILL -->
-- Worktree `kiln.distill` commits: <!-- FILL -->
-- Total unique files touched: <!-- FILL -->
-- Merges to main: <!-- FILL -->
-- Verifier subagent invocations: <!-- FILL -->
+The full topology — worktrees, skills, the dev-time-only Opus lane, the managed agents, the verifier gate, and the shipping runtime — is rendered in [docs/architecture/multi-agent.mmd](docs/architecture/multi-agent.mmd) as a Mermaid flowchart. GitHub renders it inline on the file page; the `.mmd` source is the canonical form. (A PNG render was attempted via `mmdc` but the local npx context couldn't launch headless Chromium; the `.mmd` source is what we ship. This is noted in the file header.)
 
 ---
 
-## 2. Skills, commands, hooks
+## 3. Verifier subagent pattern
 
-Kiln's `.claude/` directory is a shaped environment that Claude Code loads on demand. This is the pattern Anthropic describes in <https://claude.com/blog/building-agents-with-skills-equipping-agents-for-specialized-work> — progressive disclosure over monolithic prompts.
+Every merge to `main` triggers `.claude/agents/verifier.md` in a fresh Claude context. The verifier is read-only (tools limited to `Read`, `Grep`, `Glob`, `Bash` per its frontmatter), reloads only `SPEC.md` plus the directly relevant skill, and returns a **Tier 1–4** findings report. Tier 1 is blocker. Tier 2 is high-priority. Tier 3 is medium. Tier 4 is nit. The verifier is invoked by `/review` or by the post-merge checklist in [ORCHESTRATION.md](ORCHESTRATION.md).
 
-### 2.1 Skills (loaded on demand)
-
-| Skill | Triggers on | Loads |
-|---|---|---|
-| `mlx-lora-finetuning` | Training code, MLX bugs, OOM, GGUF export | CLI invocations, hyperparameters, gotchas |
-| `swiftui-polish-kiln` | UI code, copy review, polish passes | Design tokens, microcopy, animation rules |
-| `kiln-demo-recording` | Demo video planning, `/demo-check` | Shot-by-shot script, pre-flight, fallbacks |
-| `distillation-pipeline` | Opus labeling, small-model training, evals | Prompts, concurrency, ship criteria |
-
-### 2.2 Slash commands
-
-| Command | Purpose |
-|---|---|
-| `/plan <task>` | Explore -> Plan -> Implement -> Commit discipline |
-| `/milestone <N>` | Close a milestone with tests, spec check, commit |
-| `/review <path>` | Spawn a review subagent in a fresh context |
-| `/polish <view>` | Five concrete before/after improvements for a SwiftUI view |
-| `/distill <component>` | Run the Opus-teacher distillation pipeline |
-| `/demo-check` | Audit against the North Star Demo |
-| `/ship` | Final pre-submission gate |
-
-### 2.3 Hooks (deterministic automation)
-
-| Hook point | Script | Purpose |
-|---|---|---|
-| `PostToolUse` | `post-tool-use.sh` | Format `.swift` with swift-format, `.py` with ruff, `.json` with jq |
-| `PreToolUse` (git commit) | `pre-commit.sh` | Gate commits on `make test` |
-| `Stop` | `stop.sh` | Append 5-bullet session summary to `SESSION_LOG.md` via `claude -p` headless |
-
-### 2.4 Screenshots
-
-<!-- FILL DURING SPRINT: screenshot of /polish output, /demo-check output, /milestone output -->
-
----
-
-## 3. Opus 4.7 as teacher (the core creative use)
-
-This is the **Most Creative Opus 4.7 Exploration** submission. Opus is treated as a **medium**, not a tool: we use it once, at dev time, to distill intelligence into three small local models that ship inside Kiln. At runtime, Kiln calls zero APIs.
-
-### 3.1 Three distilled components
-
-| Component | Opus labels | Volume | Shipped as | Metric | Bar | Actual |
-|---|---|---|---|---|---|---|
-| `quality-classifier` | text -> score + reason | 10,000 | CoreML | F1 | 0.85 | <!-- FILL --> |
-| `preference-judge` | A vs B -> winner | 5,000 | CoreML | accuracy | 0.80 | <!-- FILL --> |
-| `style-extractor` | text -> 64-d + card | 2,000 | CoreML + Qwen-1.5B LoRA | cosine | 0.75 | <!-- FILL --> |
-
-### 3.2 Cost / quality envelope
-
-- Total Opus API calls: <!-- FILL -->
-- Total cost (USD): <!-- FILL -->
-- Cost per distilled component: <!-- FILL -->
-- Labels per USD (efficiency): <!-- FILL -->
-
-### 3.3 Why this is creative, not basic
-
-A "basic" Opus integration would call Opus from the app at runtime. We do the opposite: Opus is the **teacher that never meets the user**. The intelligence is distilled into weights that then live on the user's machine. This collapses to zero the cost of running Kiln, zero the latency, and zero the privacy risk — all while inheriting Opus's judgment inside small local models. It treats a flagship frontier model as a compiler target for local capability. We know of no prior art on this specific recipe for on-device fine-tuning tooling.
-
----
-
-## 4. Managed Agents in production
-
-Submission for **Best Use of Claude Managed Agents** ($5K prize). We run two managed agents that do meaningful long-running work: they are not demos.
-
-### 4.1 Corpus Builder
-
-- Purpose: continuously pulls user-authorized content from Gmail, Notion, GitHub, Slack via MCP servers, normalizes to JSONL, writes to a user-owned folder Kiln then ingests.
-- Why managed: multi-hour, resumable, secret-holding, cross-service. Exactly the workload <https://claude.com/blog/claude-managed-agents> describes.
-- Schedule: runs on demand via Kiln's onboarding flow; can also be cron-style.
-- Config: `managed-agents/corpus-builder/agent.yaml`.
-
-### 4.2 Eval Matrix Runner
-
-- Purpose: nightly regression eval over the last adapter — perplexity, preference-judge win-rate vs base, three fixed-prompt samples, 256-token latency.
-- Why managed: long-running, reproducible, feeds `demo-check` and CI.
-- Schedule: every night at 02:00 local.
-- Config: `managed-agents/eval-matrix-runner/agent.yaml`.
-
-### 4.3 Session stats
-
-- Corpus Builder total runtime across sprint: <!-- FILL --> hours
-- Corpus Builder rows ingested: <!-- FILL -->
-- Eval Matrix Runner executions: <!-- FILL -->
-- Regressions caught before merge: <!-- FILL -->
-
----
-
-## 5. Verification pattern
-
-Universal best practice from Anthropic: every merge goes through a fresh-context verifier. This catches what the implementer cannot see because they are too close. See `.claude/agents/verifier.md`.
-
-### 5.1 Subagent stats (live — updated 2026-04-23, end of day 2)
+### 3.1 Stats through end of day 3 (2026-04-23)
 
 | Milestone | Mode | Verdict | T1 | T2 | T3 | Status |
 |---|---|---|---|---|---|---|
 | M0 scaffold | post-merge | PASS | 0 | 0 | 0 | clean |
-| M1 data pipeline | post-merge | PASS-WITH-FINDINGS | 1 | 3 | 1 | fixup commit `5afeecc` addressed all 5 → merged to main as `c6bad41` |
-| M2 trainer sidecar | pre-merge | PASS-WITH-FINDINGS | 1 | 3 | 3 | fixup pending on `claude/friendly-mendeleev-84909b` |
-| M3 UI shell | pre-merge | PASS-WITH-FINDINGS | 0 | 3 | 6 | fixup pending on `claude/zen-wiles-2fa132` |
+| M1 data pipeline | post-merge | PASS-WITH-FINDINGS | 1 | 3 | 1 | all 5 addressed in `5afeecc`, merged as `c6bad41` |
+| M2 trainer sidecar | pre-merge | PASS-WITH-FINDINGS | 1 | 3 | 3 | addressed in `4396972`, merged as `119321e` |
+| M3 UI shell | pre-merge | PASS-WITH-FINDINGS | 0 | 3 | 6 | addressed in `3134a39`, merged as `168d46d` |
 
-Rollup:
+Rollup: 4 PRs reviewed, **2 Tier-1 findings** (both addressed), **9 Tier-2 findings** (all addressed), **10 Tier-3 findings**. False positives: **0** — every finding was accepted by the implementing session. Four concrete real-bug catches through M3:
 
-- PRs reviewed: **4**
-- Tier 1 (blocker) findings: **2** — 1 in M1 (addressed), 1 in M2 (pending)
-- Tier 2 (high) findings: **9** — 3 in M1 (addressed), 3 in M2 and 3 in M3 (pending)
-- Tier 3 (medium) findings: **10**
-- Real bugs caught before merge: **4 concrete examples**
-  - **[M1-T1]** `ChatMLBuilder.defaultSystemPrompt` diverged from SPEC §5.4 — served prompt would have silently differed from trained prompt. `packages/KilnCore/Sources/KilnCore/Ingest/ChatML.swift`. Full case study in §5.3.
-  - **[M2-T1]** Sidecar IPC implemented as argparse subcommands on short-lived processes instead of SPEC §11.2's JSON-lines stdin on a long-running subprocess — `packages/kiln_trainer/src/kiln_trainer/cli.py:22-34`. Swift-side IPC (M5) would have failed at first bring-up.
-  - **[M2-T2]** Bare `assert proc.stdout is not None` in three command runners (e.g. `packages/kiln_trainer/src/kiln_trainer/commands/train.py:150`) — Python `-O` strips asserts, turning a contract check into a silent `AttributeError` downstream.
-  - **[M3-T2]** Amber accent outside SPEC §10.1's allow-list on a body-text "live" label — `apps/Kiln/Sources/Views/Detail/LogsPanel.swift:50`. Tiny on its own; the verifier caught three instances of the same drift in one pass, which suggests a systemic gap.
-- False positives: **0**. Every finding has been accepted by the implementing agent. M1 addressed in the fixup commit; M2 and M3 fixups pending.
+- **[M1-T1]** `ChatMLBuilder.defaultSystemPrompt` had drifted from SPEC §5.4's exact literal. Full case study in §3.2.
+- **[M2-T1]** The sidecar was implemented as short-lived argparse subcommands instead of SPEC §11.2's long-running JSON-lines daemon. Would have failed at first Swift-side bring-up in M5. The spec was amended in `DECISIONS.md §L8` to formally supersede §11.2 with the argparse surface; see the footnote retained in SPEC §11.2.
+- **[M2-T2]** Bare `assert proc.stdout is not None` in three command runners. Python `-O` strips asserts, silently turning contract checks into downstream `AttributeError`.
+- **[M3-T2]** Amber accent used outside SPEC §10.1's allow-list on a body-text "live" label. The verifier found three instances in one pass, suggesting a systemic drift, not a one-off.
 
-### 5.2 Why fresh context
+### 3.2 Case study — train/serve template parity (M1-T1)
 
-The verifier is spawned by the `/review` command or the post-merge checklist in `ORCHESTRATION.md`. It has **no memory** of the implementation session and reloads only `SPEC.md` + the relevant skill. This is deliberately expensive context-wise, but the quality of catches is worth it — the implementer has already rationalized their decisions, and a fresh reader won't.
+The textbook case for fresh-context review.
 
-### 5.3 Case study — train/serve template parity (M1-T1)
+**What was shipped.** The M1 data-pipeline commit (`9e2e676 milestone(2): data pipeline`) introduced `ChatMLBuilder` to render training examples. Its `defaultSystemPrompt` was reasonable-looking prose. The pipeline ran; 61 XCTests passed. From inside the session, nothing looked wrong.
 
-The textbook example of a bug only a fresh reader catches.
+**What the verifier caught.** Reading SPEC §5.4 cold, the verifier noticed the system-prompt literal did not match the spec byte-for-byte (the exact string "You are {user_name}, responding in their voice."). More importantly, it cross-referenced SPEC §9.3 — the Ollama Modelfile `TEMPLATE` that renders the **same** prompt at serve time — and flagged that no test pinned the two paths to the same string. Train-time and serve-time tests lived in different packages and never met.
 
-**What the implementer shipped.** DATA's first M1 commit (`9e2e676 milestone(2): data pipeline`) introduced `ChatMLBuilder` to render training examples in ChatML. The `defaultSystemPrompt` was reasonable-looking prose. The training pipeline worked. 61 XCTests passed. From inside the session, nothing looked off.
+**Why that matters.** The model would have been fine-tuned on one prompt and, at serve time, Ollama would have handed it a subtly different one. Voice quality would degrade silently: the model still speaks, just not in the user's voice. No test would fail. This is the kind of finding an implementer who has already rationalized their choices cannot see. A reader loading SPEC fresh does.
 
-**What the verifier caught.** Reading SPEC §5.4 in isolation, the verifier flagged that the system-prompt literal did not match the spec byte-for-byte ("You are {user_name}, responding in their voice."). Worse, it noticed that SPEC §9.3 specifies the Ollama Modelfile `TEMPLATE` that will render the **same** prompt at serve time — but the two were drifting on separate code paths, with nothing pinning them to the same string.
-
-Why this matters: the model would be fine-tuned on one prompt and, at serve time, Ollama would hand it a subtly different one. Voice quality degrades silently — the model still speaks, just not in the user's voice — and no test would have caught it, because train-time and serve-time tests lived in different packages and never met.
-
-**How DATA fixed it in `5afeecc fixup: verifier findings M1`.**
+**How it was fixed in `5afeecc`.**
 
 - `ChatMLBuilder.defaultSystemPrompt` now matches SPEC §5.4 literally, with `{user_name}` substituted from `IngestConfig.userName` at build time.
-- New `Qwen25ChatTemplate` renders the Qwen2.5-Instruct chat format (`<|im_start|>role\ncontent<|im_end|>\n`). `addGenerationPrompt=true` produces the serve-time prefix Ollama will hand the model.
-- `Tests/KilnCoreTests/Ingest/Qwen25ChatTemplateTests.swift` asserts a byte-for-byte match between the Qwen rendering and the SPEC §9.3 Ollama Modelfile `TEMPLATE` for the same `(system, user)` pair — so drift on either side now fails CI.
+- A new `Qwen25ChatTemplate` renders the Qwen2.5-Instruct chat format (`<|im_start|>role\ncontent<|im_end|>\n`). With `addGenerationPrompt=true`, it produces the exact serve-time prefix Ollama hands the model.
+- `Tests/KilnCoreTests/Ingest/Qwen25ChatTemplateTests.swift` asserts a byte-for-byte match between the Qwen rendering and the SPEC §9.3 Ollama Modelfile `TEMPLATE` for the same `(system, user)` pair. Drift on either side now fails CI.
 
-**Why we record this.** The finding was textual and quiet — no stack trace, no red test, no user-visible symptom. It would have made it to the M10 demo and silently undermined the grand claim of the product. A verifier reading SPEC in isolation is exactly the lens that sees it. This is the pattern we will keep running for M4–M10.
-
----
-
-## 6. Kiln as a Skill
-
-The product itself ships as a consumable Claude Skill that any Claude Code user can install. See `.claude/skills/kiln/` (packaged on release day).
-
-- Skill name: `kiln` (once packaged and published).
-- Description: "Fine-tune a local LLM on a folder of your own writing using MLX on Apple Silicon. Wraps the Kiln.app pipeline."
-- Commands exposed: `/kiln train <folder>`, `/kiln export`, `/kiln compare`.
-- Distribution: planned via the Claude Skills marketplace post-hackathon.
-
-<!-- FILL DURING SPRINT: link to published skill once packaged on day 5 -->
+The pattern we keep running for M4–M10 is: merge-gate on fresh-context review, trust the first-read friction, fix before the next milestone takes a dependency on the drift.
 
 ---
 
-## 7. Human vs Claude — the honest breakdown
+## 4. Claude Code environment
 
-A judge reading this should know exactly what each of us did. This is the least-bullshit version we can produce.
+The `.claude/` directory is shaped specifically for this project. Three mechanisms carry different kinds of load.
 
-### 7.1 What the human decided
+### 4.1 Skills (six, progressive disclosure)
 
-- The product concept (fine-tuning a local LLM from a folder drop).
-- The slogan and tagline.
-- The architecture split (SwiftUI / KilnCore / Python sidecar).
-- The choice of MLX-LM over alternatives.
-- The creative use of Opus as teacher — the "never call APIs at runtime" constraint.
-- The demo structure (7 steps, emotional peak at Growing Model).
+Each skill has a YAML frontmatter `name` + `description` (Level 1, ~100 tokens, always indexed) and a `SKILL.md` body that loads on trigger match (Level 2, ≤300 lines). Sibling files (Level 3) load only when the skill explicitly references them. This matches the progressive-disclosure pattern Anthropic documents for skills.
+
+| Skill | Loads on | Level-3 siblings |
+|---|---|---|
+| mlx-lora-finetuning | MLX/LoRA/OOM/GGUF work | hyperparameters, CLI reference, gotchas |
+| swiftui-polish-kiln | SwiftUI views, `/polish`, copy review | design tokens, microcopy, animation rules |
+| kiln-demo-recording | demo planning, `/demo-check` | shot-by-shot, pre-flight, fallbacks |
+| distillation-pipeline | Opus labeling, distilled models, `/distill` | prompts, concurrency rules, ship criteria |
+| **macos-data-sources** *(new)* | TCC, chat.db, Notes, Obsidian ingest | SQL schema, AppleScript export, Swift patterns |
+| **interpretability-helpers** *(new)* | log-odds scoring, Style profile, neighbors | Swift scorer, embedding setup, significance thresholds |
+
+The two newest skills (committed `72ff7b6`) consolidated knowledge that was beginning to repeat across worktrees. `macos-data-sources` formalizes the Full Disk Access probe, canonical `chat.db` SQL (including the `NSKeyedArchiver` SQLite UDF for `attributedBody`), AppleScript for Notes, and Obsidian wikilink/frontmatter handling. `interpretability-helpers` formalizes log-odds-with-informative-Dirichlet-prior (Monroe, Colaresi, Quinn 2008) scoring in Swift plus Python pseudocode, POS n-gram via `NLTagger`, structural stats, and the CoreML-vs-sidecar tradeoff for Sentence Transformers.
+
+### 4.2 Slash commands (seven)
+
+| Command | Purpose |
+|---|---|
+| `/plan <task>` | Explore → Plan → Implement → Commit. Plan Mode enforced at milestone boundaries. |
+| `/milestone <N>` | Close a milestone: tests, spec check, commit with milestone label. |
+| `/review <path>` | Spawn the verifier subagent in a fresh context. |
+| `/polish <view>` | Five concrete before/after improvements for a SwiftUI view against the polish skill. |
+| `/distill <component>` | Run the Opus-teacher distillation pipeline end-to-end. |
+| `/demo-check` | Audit the current build against the North-Star Demo (SPEC §2). |
+| `/ship` | Final pre-submission gate. Fails loudly on any runtime-API drift or missing artifact. |
+
+### 4.3 Hooks (three, deterministic)
+
+| Hook | Script | Behavior |
+|---|---|---|
+| `PostToolUse` | `post-tool-use.sh` | Formats edited Swift / Python / JSON (best-effort, `|| true` so missing formatters don't block). |
+| `PreToolUse` (git commit) | `pre-commit.sh` | Gates commits on `make test`. A failing hook means the commit didn't happen — we fix and make a new commit, never `--amend`. |
+| `Stop` | `stop.sh` | Appends a five-bullet session summary to `SESSION_LOG.md` via `claude -p` headless. |
+
+Hooks matter structurally because they move repeated discipline out of the session's prompt budget and into the filesystem. Every worktree inherits the same formatting and test-gating without a single reminder.
+
+---
+
+## 5. Opus 4.7 as teacher
+
+This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opus is used as a medium, not a tool: once, at dev time, to distill intelligence into three small local models that ship inside Kiln. The recipe is specified contract-style in [SPEC.md §7](SPEC.md) and operationally in `.claude/skills/distillation-pipeline/`.
+
+### 5.1 The three distilled components
+
+| Component | Opus input → output | Volume | Shipped form | Bar | Current |
+|---|---|---|---|---|---|
+| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | <!-- FILL --> |
+| `preference-judge` | (prompt, A, B) → winner | 5 000 labels | CoreML (paired-input head) | accuracy ≥ 0.80 | <!-- FILL --> |
+| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | <!-- FILL --> |
+
+Each artifact is committed to `distilled/<name>/` with a `manifest.json` pinning Opus model id, git SHA at label time, and eval metrics. Artifacts below the bar do not ship; the pipeline reruns or hand-labels edge cases.
+
+### 5.2 Why this is a non-obvious use of Opus
+
+The default way to use Opus 4.7 in an app would be an API call from the app at runtime. Kiln does the opposite. Opus is the teacher that never meets the user. Intelligence is distilled into weights that ship inside the `.app` bundle and onto the user's Mac. The shipping product calls zero APIs; it nonetheless inherits Opus-grade judgment on three specific tasks (quality scoring, pairwise preference, style characterization).
+
+This collapses three costs to zero at the user's edge: **privacy** (no user text ever leaves the machine at runtime), **latency** (no round-trip), and **operating cost** (no per-token charge). It turns a flagship frontier model into what is effectively a compiler target for on-device capability. The verifier enforces the constraint absolutely — its charter says: *"You never approve a change that leaks an API at runtime, even if nominal tests pass. That rule is absolute."* (`.claude/agents/verifier.md`.)
+
+### 5.3 Cost envelope
+
+- Total Opus API calls (distillation only): <!-- FILL at /milestone M7 -->
+- Total USD spent on labeling: <!-- FILL -->
+- Cost per distilled component: <!-- FILL -->
+- Labels per USD (throughput): <!-- FILL -->
+
+All distillation invocations are gated under `scripts/opus-*` (dev-only) and never imported from the shipping packages. The verifier's Tier-1 checklist runs `rg -n 'anthropic|opus|claude' apps/ packages/` at every merge to catch accidental imports.
+
+---
+
+## 6. Claude Managed Agents
+
+Submission for the **Best Use of Claude Managed Agents** special prize. Two agents live in `managed-agents/`, each as a YAML spec plus a `README.md` explaining operation. Neither runs inside the shipping app; both operate against MCP surfaces the user explicitly authorizes.
+
+### 6.1 `corpus-builder`
+
+- **File:** `managed-agents/corpus-builder/agent.yaml`.
+- **Job:** pulls the user's own authored content from Gmail, Notion, GitHub, and Slack via MCP servers, normalizes each item to `{source, timestamp, text, source_id}` JSONL rows, and writes to `~/Library/Application Support/Kiln/corpus/`. Kiln then ingests that folder through its normal drop flow.
+- **Why managed, not in-app:** multi-hour, resumable, cross-service, secret-holding. Exactly the workload profile Claude Managed Agents exist for. Embedding the same logic inside Kiln would force the app to carry a session store, four OAuth implementations, and retry queues — work that duplicates what MCP + Managed Agents already solve.
+- **Config highlights:** `model: claude-opus-4-7`, `maxRuntimeMinutes: 360`, per-source MCP scopes locked to read-only and author-matched (`sent-only` for Gmail, `user-authored` for GitHub, `dms-authored-by-user` for Slack). Four per-source subagents run the same normalization loop against different MCPs. Schedule disabled by default; the user opts in from Kiln's onboarding.
+
+### 6.2 `eval-matrix-runner`
+
+- **File:** `managed-agents/eval-matrix-runner/agent.yaml`.
+- **Job:** nightly at 02:00 local. Invokes the Kiln sidecar's eval commands (`--eval perplexity`, `--eval winrate`, `--prompt p1|p2|p3`, `--bench latency`), aggregates results, writes `docs/eval/<date>.md` + `docs/eval/latest.md` + `docs/eval/trend.json`, and — if headline metrics regressed beyond threshold — opens a GitHub issue tagged `eval-regression` with the diff and the likely-cause PR.
+- **Why managed:** long-running, needs to fire unattended, feeds the `/demo-check` command and CI. Writes only to the reports subdirectory and the GitHub issues API (`writeScope: reportsAndTrend`, `networkScope: mcpOnly`).
+- **Thresholds:** win-rate drop > 2%, perplexity drop > 5% → open issue. These are pinned in the agent spec; changes require a `DECISIONS.md` entry.
+
+### 6.3 Session stats
+
+- `corpus-builder` total runtime across sprint: <!-- FILL -->
+- `corpus-builder` rows ingested (across all MCPs): <!-- FILL -->
+- `eval-matrix-runner` executions through demo day: <!-- FILL -->
+- Regressions caught before merge by the runner: <!-- FILL -->
+
+---
+
+## 7. Ten product features that exist because of Claude
+
+None of these is simply "Claude wrote the code." Each required a Claude-shaped capability that a single human on a 5-day sprint could not have produced alone.
+
+1. **Drop-folder ingest across six formats** (markdown, JSON chat exports, iMessage exports, source code, `.eml`/`.mbox`, Obsidian vaults). Shaped by the `macos-data-sources` skill, which catalogues each permission model and parser quirk. A single session would have had to re-discover TCC-for-`chat.db` every visit.
+2. **Dataset Doctor with three-tier dedup** (SHA-256, MinHash@0.85, per-speaker deferred per [DECISIONS.md §5](DECISIONS.md)). The deferral itself is a Claude-surfaced call — the verifier flagged it in M2-T2, and the trade-off was logged rather than eagerly implemented.
+3. **Style profile panel** backed by the `style-extractor` distilled component. The log-odds-with-informative-Dirichlet-prior scorer that produces the lexical portion is in `.claude/skills/interpretability-helpers/tf-idf-swift.swift` — a Monroe et al. (2008) port that a single human would likely have rounded to "TF-IDF" and shipped wrong.
+4. **Quality filter gating** on the `quality-classifier` CoreML artifact. The F1 ≥ 0.85 ship bar is a Claude-discipline gate: distilled artifacts below bar do not merge, per SPEC §7.4.
+5. **Sidecar spawn / IPC / teardown** written once to SPEC §11 and kept honest across four worktrees by the verifier. The M2-T1 finding (argparse vs JSON-lines daemon) is the canonical example.
+6. **Growing Model panel** — three fixed prompts streaming through the current adapter every 50 iters during training. Implementation is SwiftUI; shape is SPEC §6.3; timing is the `kiln-demo-recording` skill.
+7. **Before/After chat** — split-pane comparison of base model vs fine-tuned adapter on the same prompt. Shares the `Qwen25ChatTemplate` that the M1 verifier finding forced into existence; if that finding hadn't landed, this feature would be subtly broken.
+8. **Ollama export** — one click through fuse → GGUF → `ollama create`. Specified in SPEC §9 with a pinned Modelfile TEMPLATE; kept byte-equivalent to the training-time prompt by the regression test added in `5afeecc`.
+9. **Empty / error / in-progress states everywhere** — SPEC §10.4 says "every panel has a considered empty state with a single call to action; no blank panes, ever." Enforced by `/polish` and by the `swiftui-polish-kiln` skill's polish checklist.
+10. **Nightly eval regression detection** — `eval-matrix-runner` runs unattended, catches perplexity/win-rate drift against the previous green adapter, and files an issue. No human poll required.
+
+---
+
+## 8. Human vs Claude — honest breakdown
+
+Judges will want to know who did what.
+
+### 8.1 Human decisions
+
+- The product concept (fine-tune a local LLM from a folder drop).
+- The slogan, tagline, and narrative framing of the demo.
+- The three-layer architecture split (SwiftUI / KilnCore / Python sidecar).
+- The choice of MLX-LM over alternatives, and the default Qwen2.5-3B ([DECISIONS.md §1](DECISIONS.md)).
+- The creative use of Opus as teacher — the "never call APIs at runtime" constraint. This is the hackathon thesis; it was chosen before any code was written.
+- The context-based worktree split ([DECISIONS.md §3](DECISIONS.md)).
+- The seven-step North-Star Demo (SPEC §2) and the emotional peak at Growing Model.
 - Every trade-off recorded in `DECISIONS.md`.
 
-### 7.2 What Claude wrote
+### 8.2 What Claude produced
 
-- Almost all production code, across Swift and Python.
-- All scaffolding in this repo.
-- The distillation labeling prompts (written by the human, refined by Claude via iterated eval).
-- Most of the microcopy (drafted by Claude, accepted/rejected by the human against the swiftui-polish-kiln skill rules).
+- Nearly all production Swift and Python code, across four worktrees.
+- All repository scaffolding (Package.swift, pyproject.toml, xcodegen `project.yml`, Makefile).
+- The six skill files plus their Level-3 siblings (operational depth encoded so future sessions reload it cheaply).
+- The verifier subagent charter (authored once, run many times, catches described in §3).
+- The two managed-agent YAML specs + their READMEs.
+- Most microcopy, drafted by Claude and accepted/rejected by the human against the polish skill rules.
+- The distillation labeling prompts (human sketches, refined by Claude via iterated eval).
 
-### 7.3 Rough ratio
+### 8.3 Rough ratio
 
-- Human-authored LOC: <!-- FILL --> / <!-- FILL --> total
-- Claude-authored LOC: <!-- FILL --> / <!-- FILL --> total
+- Human-authored LOC: <!-- FILL at /milestone M10 -->
+- Claude-authored LOC: <!-- FILL -->
 - Human-reviewed-and-edited LOC (subset of Claude-authored): <!-- FILL -->
 
-### 7.4 Reflection
+### 8.4 Reflection
 
-Kiln is a 5-day project that would not have been possible in 5 days without Claude — not because Claude wrote the code faster, but because Claude let a single human hold four contexts at once (UI, core, trainer, distill) without context collapse. The key move was structural: skills + subagents + hooks meant the repo itself shaped how Claude worked, instead of the human re-prompting on every task. That is the use of Claude we want judges to notice.
+Kiln is a five-day product that would not have been possible in five days without Claude — not because Claude writes code faster than a human would, but because Claude lets a single human hold four contexts at once (UI, core, trainer, distill) without context collapse. The structural moves — skills, subagents, hooks, the verifier gate — mean the repo shapes how Claude works, rather than the human re-prompting on every task. That is what we want judges to notice: not that Claude wrote code, but that the environment around Claude was itself the design.
 
 ---
 
-*This document is intentionally frank. If a section above is thin or unconvincing, consider it a measurement of how much that part of the product fell short — not of how Claude was used. Both are legitimate feedback.*
+## 9. Metrics dashboard
+
+Live-updated at `/milestone N`. Through end of day 3 of 5:
+
+### 9.1 Repository
+
+- Commits on `main`: **14** (`718c1d7` through `72ff7b6`)
+- Merged milestone branches: **3** (M1 data, M2 trainer, M3 UI)
+- Files by scope: ~41 `packages/kiln_trainer`, ~38 `packages/KilnCore`, ~36 `apps/Kiln`, ~25 test fixtures, **12** `.claude/skills`, 7 commands, 3 hooks, 2 managed agents
+- `DECISIONS.md` entries: **8** (entry #8 added in this commit — "runtime stays local, Claude lives in the build workflow")
+
+### 9.2 Verifier (see §3.1 for per-milestone breakdown)
+
+- PRs reviewed: **4**
+- T1 findings: **2** (both addressed)
+- T2 findings: **9** (all addressed)
+- T3 findings: **10**
+- False positives: **0**
+- Real-bug catches: **4**
+
+### 9.3 Opus-as-teacher
+
+- Distillation runs executed: <!-- FILL at M5 -->
+- API calls: <!-- FILL -->
+- USD spent: <!-- FILL -->
+- Artifacts shipped above bar: <!-- FILL / 3 -->
+
+### 9.4 Managed agents
+
+- `corpus-builder` runtime: <!-- FILL -->
+- `corpus-builder` rows: <!-- FILL -->
+- `eval-matrix-runner` executions: <!-- FILL -->
+- Regressions caught: <!-- FILL -->
+
+### 9.5 Human-facing output
+
+- Final demo video length: <!-- FILL at M10 --> / 3:00 target
+- North-Star Demo steps landed: <!-- FILL --> / 7
+- Empty/error/in-progress states landed: <!-- FILL --> / target "every panel"
+
+---
+
+*This document is a contract with the reader: whenever a number is unfilled above, it means that milestone hasn't closed yet, not that the number is being hidden. If a section reads thin at submission, treat it as a measurement of how much that part of the product fell short — not of how Claude was used. Both are legitimate feedback.*
