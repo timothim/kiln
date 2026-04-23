@@ -107,6 +107,9 @@ enum Kiln {
         static let sidebarMinWidth: CGFloat = 220
         static let sidebarIdeal:    CGFloat = 260
         static let sidebarMaxWidth: CGFloat = 320
+        /// Minimum width for the center stage pane in the NavigationSplitView.
+        /// Narrower than this and stage headers start truncating.
+        static let centerMinWidth:  CGFloat = 360
         static let detailMinWidth:  CGFloat = 300
         static let detailIdeal:     CGFloat = 340
     }

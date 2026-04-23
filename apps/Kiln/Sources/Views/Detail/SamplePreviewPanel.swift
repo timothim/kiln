@@ -41,7 +41,7 @@ struct SamplePreviewPanel: View {
     }
 
     private func sampleRow(label: String, text: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 6, height: 6)
                 Text(label)

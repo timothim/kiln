@@ -24,7 +24,7 @@ struct ChatPanel: View {
                 .padding(.top, Kiln.Space.xs - 2)
 
             copyButton
-                .padding(.top, Kiln.Space.xs - 4)
+                .padding(.top, Kiln.Space.xxs)
         }
         .padding(Kiln.Space.m)
     }
