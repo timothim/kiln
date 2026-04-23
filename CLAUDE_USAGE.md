@@ -146,19 +146,49 @@ Submission for **Best Use of Claude Managed Agents** ($5K prize). We run two man
 
 Universal best practice from Anthropic: every merge goes through a fresh-context verifier. This catches what the implementer cannot see because they are too close. See `.claude/agents/verifier.md`.
 
-### 5.1 Subagent stats
+### 5.1 Subagent stats (live — updated 2026-04-23, end of day 2)
 
-- PRs reviewed: <!-- FILL -->
-- Tier 1 (blocker) findings: <!-- FILL -->
-- Tier 2 (high) findings: <!-- FILL -->
-- Real bugs caught before merge: <!-- FILL --> — examples below:
-  - <!-- FILL: one-line example, file:line -->
-  - <!-- FILL: another -->
-- False positives: <!-- FILL -->
+| Milestone | Mode | Verdict | T1 | T2 | T3 | Status |
+|---|---|---|---|---|---|---|
+| M0 scaffold | post-merge | PASS | 0 | 0 | 0 | clean |
+| M1 data pipeline | post-merge | PASS-WITH-FINDINGS | 1 | 3 | 1 | fixup commit `5afeecc` addressed all 5 → merged to main as `c6bad41` |
+| M2 trainer sidecar | pre-merge | PASS-WITH-FINDINGS | 1 | 3 | 3 | fixup pending on `claude/friendly-mendeleev-84909b` |
+| M3 UI shell | pre-merge | PASS-WITH-FINDINGS | 0 | 3 | 6 | fixup pending on `claude/zen-wiles-2fa132` |
+
+Rollup:
+
+- PRs reviewed: **4**
+- Tier 1 (blocker) findings: **2** — 1 in M1 (addressed), 1 in M2 (pending)
+- Tier 2 (high) findings: **9** — 3 in M1 (addressed), 3 in M2 and 3 in M3 (pending)
+- Tier 3 (medium) findings: **10**
+- Real bugs caught before merge: **4 concrete examples**
+  - **[M1-T1]** `ChatMLBuilder.defaultSystemPrompt` diverged from SPEC §5.4 — served prompt would have silently differed from trained prompt. `packages/KilnCore/Sources/KilnCore/Ingest/ChatML.swift`. Full case study in §5.3.
+  - **[M2-T1]** Sidecar IPC implemented as argparse subcommands on short-lived processes instead of SPEC §11.2's JSON-lines stdin on a long-running subprocess — `packages/kiln_trainer/src/kiln_trainer/cli.py:22-34`. Swift-side IPC (M5) would have failed at first bring-up.
+  - **[M2-T2]** Bare `assert proc.stdout is not None` in three command runners (e.g. `packages/kiln_trainer/src/kiln_trainer/commands/train.py:150`) — Python `-O` strips asserts, turning a contract check into a silent `AttributeError` downstream.
+  - **[M3-T2]** Amber accent outside SPEC §10.1's allow-list on a body-text "live" label — `apps/Kiln/Sources/Views/Detail/LogsPanel.swift:50`. Tiny on its own; the verifier caught three instances of the same drift in one pass, which suggests a systemic gap.
+- False positives: **0**. Every finding has been accepted by the implementing agent. M1 addressed in the fixup commit; M2 and M3 fixups pending.
 
 ### 5.2 Why fresh context
 
 The verifier is spawned by the `/review` command or the post-merge checklist in `ORCHESTRATION.md`. It has **no memory** of the implementation session and reloads only `SPEC.md` + the relevant skill. This is deliberately expensive context-wise, but the quality of catches is worth it — the implementer has already rationalized their decisions, and a fresh reader won't.
+
+### 5.3 Case study — train/serve template parity (M1-T1)
+
+The textbook example of a bug only a fresh reader catches.
+
+**What the implementer shipped.** DATA's first M1 commit (`9e2e676 milestone(2): data pipeline`) introduced `ChatMLBuilder` to render training examples in ChatML. The `defaultSystemPrompt` was reasonable-looking prose. The training pipeline worked. 61 XCTests passed. From inside the session, nothing looked off.
+
+**What the verifier caught.** Reading SPEC §5.4 in isolation, the verifier flagged that the system-prompt literal did not match the spec byte-for-byte ("You are {user_name}, responding in their voice."). Worse, it noticed that SPEC §9.3 specifies the Ollama Modelfile `TEMPLATE` that will render the **same** prompt at serve time — but the two were drifting on separate code paths, with nothing pinning them to the same string.
+
+Why this matters: the model would be fine-tuned on one prompt and, at serve time, Ollama would hand it a subtly different one. Voice quality degrades silently — the model still speaks, just not in the user's voice — and no test would have caught it, because train-time and serve-time tests lived in different packages and never met.
+
+**How DATA fixed it in `5afeecc fixup: verifier findings M1`.**
+
+- `ChatMLBuilder.defaultSystemPrompt` now matches SPEC §5.4 literally, with `{user_name}` substituted from `IngestConfig.userName` at build time.
+- New `Qwen25ChatTemplate` renders the Qwen2.5-Instruct chat format (`<|im_start|>role\ncontent<|im_end|>\n`). `addGenerationPrompt=true` produces the serve-time prefix Ollama will hand the model.
+- `Tests/KilnCoreTests/Ingest/Qwen25ChatTemplateTests.swift` asserts a byte-for-byte match between the Qwen rendering and the SPEC §9.3 Ollama Modelfile `TEMPLATE` for the same `(system, user)` pair — so drift on either side now fails CI.
+
+**Why we record this.** The finding was textual and quiet — no stack trace, no red test, no user-visible symptom. It would have made it to the M10 demo and silently undermined the grand claim of the product. A verifier reading SPEC in isolation is exactly the lens that sees it. This is the pattern we will keep running for M4–M10.
 
 ---
 
