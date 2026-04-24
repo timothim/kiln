@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// Left pane — the project list. Section header, selectable rows, and a
-/// footer button that mirrors ⌘N so the entry point is always visible.
+/// bottom inset that stacks the voice selector above the "New project"
+/// footer so the active voice is visible at a glance regardless of which
+/// project is open.
 struct SidebarView: View {
     @Bindable var model: AppModel
 
@@ -21,7 +23,16 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            newProjectFooter
+            VStack(spacing: 0) {
+                Divider()
+                voiceSelectorFooter
+                Divider()
+                newProjectFooter
+            }
+            .background(.thinMaterial)
+        }
+        .task {
+            await model.voicesModel.refresh()
         }
     }
 
@@ -34,6 +45,25 @@ struct SidebarView: View {
                 }
             }
         )
+    }
+
+    private var voiceSelectorFooter: some View {
+        VoiceSelectorView(
+            voices: model.voicesModel.voices,
+            activeID: model.voicesModel.activeID,
+            onSelect: { id in
+                Task { await model.voicesModel.activate(id) }
+            },
+            onManage: {
+                // M8 placeholder — a dedicated "Manage voices" surface lands
+                // with the Ollama-backed provider. No-op for now so the menu
+                // entry doesn't dangle, but the user doesn't get sent
+                // anywhere that isn't built yet.
+            }
+        )
+        .padding(.horizontal, Kiln.Space.m)
+        .padding(.vertical, Kiln.Space.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var newProjectFooter: some View {
@@ -60,10 +90,6 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(.thinMaterial)
-        .overlay(alignment: .top) {
-            Divider()
-        }
         .accessibilityLabel("New project")
         .accessibilityHint("Creates a blank project")
     }

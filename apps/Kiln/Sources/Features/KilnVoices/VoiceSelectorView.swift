@@ -1,18 +1,22 @@
 import SwiftUI
+import KilnCore
 
 // MARK: - Voice Selector
 //
-// Compact toolbar-scale picker for switching the active voice. Companion to
-// `VoiceSplitterView` — splitter is the deliberate library view, selector is
-// the one-click swap. Uses `Menu` rather than `Picker` because the picker's
-// segmented/radio affordance implies mutual-exclusion as a UI primitive,
-// where the selector is really a deliberate "load a different fused adapter
-// into Ollama" action the user should take time to reach.
+// Compact toolbar-scale picker for switching the active voice. Lives in the
+// sidebar's bottom section. Uses `Menu` rather than `Picker` because the
+// picker's segmented/radio affordance implies mutual-exclusion as a UI
+// primitive, where the selector is really a deliberate "load a different
+// fused adapter into Ollama" action the user should take time to reach.
+//
+// Surface kept flat on purpose — the view is dumb: parent (`SidebarView`)
+// owns the `VoicesModel` and wires refresh/activate. That way previews can
+// drive the view off fixtures without conjuring an @Observable model.
 
 struct VoiceSelectorView: View {
-    let voices: [Voice]
-    let activeID: Voice.ID?
-    let onSelect: (Voice.ID) -> Void
+    let voices: [KilnVoices.Voice]
+    let activeID: UUID?
+    let onSelect: (UUID) -> Void
     let onManage: () -> Void
 
     var body: some View {
@@ -71,7 +75,7 @@ struct VoiceSelectorView: View {
         .contentShape(Rectangle())
     }
 
-    private var activeVoice: Voice? {
+    private var activeVoice: KilnVoices.Voice? {
         guard let id = activeID else { return nil }
         return voices.first { $0.id == id }
     }
@@ -79,6 +83,30 @@ struct VoiceSelectorView: View {
     private var activeLabel: String {
         activeVoice?.name ?? "No voice loaded"
     }
+}
+
+// MARK: - Preview fixtures
+
+private extension KilnVoices.Voice {
+    static let previewDrafts = KilnVoices.Voice(
+        id: UUID(),
+        name: "Tim — drafts",
+        ollamaTag: "kiln/tim-drafts:latest",
+        createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 2)
+    )
+    static let previewFormal = KilnVoices.Voice(
+        id: UUID(),
+        name: "Tim — formal",
+        ollamaTag: "kiln/tim-formal:2026-04-18",
+        createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 6)
+    )
+    static let previewNotes = KilnVoices.Voice(
+        id: UUID(),
+        name: "Tim — notes only",
+        ollamaTag: "kiln/tim-notes:2026-04-12",
+        createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 12)
+    )
+    static let previewLibrary: [KilnVoices.Voice] = [.previewDrafts, .previewFormal, .previewNotes]
 }
 
 // MARK: - Previews
@@ -95,10 +123,10 @@ struct VoiceSelectorView: View {
 }
 
 #Preview("With active voice") {
-    let library = Voice.mockLibrary
+    let library = KilnVoices.Voice.previewLibrary
     return VoiceSelectorView(
         voices: library,
-        activeID: library.first(where: \.isActive)?.id,
+        activeID: library.first?.id,
         onSelect: { _ in },
         onManage: {}
     )
@@ -108,11 +136,7 @@ struct VoiceSelectorView: View {
 
 #Preview("Multiple voices, none active") {
     VoiceSelectorView(
-        voices: Voice.mockLibrary.map {
-            Voice(id: $0.id, name: $0.name, ollamaTag: $0.ollamaTag,
-                  createdAt: $0.createdAt, sampleCount: $0.sampleCount,
-                  isActive: false)
-        },
+        voices: KilnVoices.Voice.previewLibrary,
         activeID: nil,
         onSelect: { _ in },
         onManage: {}

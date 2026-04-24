@@ -14,6 +14,10 @@ final class AppModel {
     var exportModel: ExportModel?
     var chatModel: ChatModel?
 
+    /// Saved-voice library — drives the sidebar's bottom-pinned selector.
+    /// Always non-nil so the selector has something to bind to at launch.
+    let voicesModel: VoicesModel
+
     /// Injected so tests can supply a fake TrainingRunner. Nil in the default
     /// init path — production wiring resolves the Python sidecar launcher.
     private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
@@ -23,11 +27,17 @@ final class AppModel {
     init(
         trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
         ollamaExporterFactory: (@MainActor () -> OllamaExporter)? = nil,
-        ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil
+        ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil,
+        voicesProvider: (any VoicesProvider)? = nil
     ) {
         self.trainingRunnerFactory = trainingRunnerFactory
         self.ollamaExporterFactory = ollamaExporterFactory
         self.ollamaClientFactory = ollamaClientFactory
+        if let voicesProvider {
+            self.voicesModel = VoicesModel(provider: voicesProvider)
+        } else {
+            self.voicesModel = VoicesModel()
+        }
     }
 
     var selectedProject: Project? {
@@ -106,20 +116,28 @@ final class AppModel {
 
     // MARK: - Train
 
-    func startTraining(projectID: Project.ID) {
+    func startTraining(projectID: Project.ID, voiceSplit: VoiceSplit? = nil) {
         guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
         guard let datasetURL = projects[idx].preparedDatasetURL else { return }
         if let existing = trainModel, case .running = existing.status { return }
+
+        // Persist the configured split on the project so re-entering the Train
+        // stage preserves selection (and so it rides on the TrainingRequest).
+        if let voiceSplit {
+            projects[idx].voiceSplit = voiceSplit
+        }
+        let resolvedSplit = projects[idx].voiceSplit
 
         let runDir = Self.runDirectory(for: projectID)
         let request = TrainingRequest(
             datasetURL: datasetURL,
             runDir: runDir,
-            model: Self.defaultBaseModel(for: projects[idx].modelSize)
+            model: Self.defaultBaseModel(for: projects[idx].modelSize),
+            voiceSplit: resolvedSplit
         )
         let model = TrainModel(runner: resolveTrainingRunner())
         trainModel = model
-        model.start(request: request)
+        model.start(request: request, voiceSplit: resolvedSplit)
     }
 
     func cancelTraining() {

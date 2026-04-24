@@ -1,318 +1,230 @@
 import SwiftUI
+import KilnCore
 
-// MARK: - Local UI-layer types
+// MARK: - Voice Splitter (persona config)
 //
-// Mirrors LEAD's KilnCore `KilnVoices.Voice { id, name, ollamaTag, createdAt }`.
-// The UI layer adds `isActive`, `sampleCount`, and `lastUsed` — these are
-// presentation concerns that the core library will eventually supply via a
-// derived `VoiceStatus` enum. Kept flat here for Phase 3.
-
-struct Voice: Identifiable, Equatable, Hashable {
-    let id: UUID
-    let name: String
-    let ollamaTag: String
-    let createdAt: Date
-    let sampleCount: Int       // size of the training corpus used for this voice
-    let isActive: Bool         // Ollama's currently-served model matches this voice's tag
-
-    init(id: UUID = UUID(),
-         name: String,
-         ollamaTag: String,
-         createdAt: Date,
-         sampleCount: Int,
-         isActive: Bool = false) {
-        self.id = id
-        self.name = name
-        self.ollamaTag = ollamaTag
-        self.createdAt = createdAt
-        self.sampleCount = sampleCount
-        self.isActive = isActive
-    }
-}
-
-// MARK: - Voice Splitter
+// Pre-training persona configuration. Surfaces each detected persona in the
+// prepared corpus as a toggleable chip so the user can dial in *which parts*
+// of their writing get baked into the voice before the Teach button fires.
 //
-// Library view of all saved voices. "Splitter" because it lays the library out
-// side-by-side so the user can compare voices before switching — the selector
-// is for quick toolbar-scale switching; the splitter is for the deliberate
-// "pick which voice I want today" moment.
-//
-// Card layout over list because each voice has rich metadata (name, sample
-// count, created date, active state) and the visual rhythm of a 3-wide grid
-// makes even a small library (2-3 voices) feel intentional rather than sparse.
+// This is not a voice *library* — that role belongs to `VoiceSelectorView`
+// in the sidebar. "Splitter" here carries the original product intent: split
+// the corpus by persona, pick the slices that should ship into the fused
+// adapter. M8 threads the resulting `VoiceSplit` onto `TrainingRequest`; the
+// trainer ignores it for now, but the UI metadata is preserved so M9+ can
+// light it up without a view churn.
 
 struct VoiceSplitterView: View {
-    let voices: [Voice]
-    let onActivate: (Voice.ID) -> Void
-    let onDelete: (Voice.ID) -> Void
+    @Binding var split: VoiceSplit
 
-    private let columns = [GridItem(.adaptive(minimum: 220), spacing: Kiln.Space.m)]
+    private let columns = [GridItem(.adaptive(minimum: 180), spacing: Kiln.Space.m)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Kiln.Space.m) {
-                header
-                if voices.isEmpty {
-                    emptyState
-                } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: Kiln.Space.m) {
-                        ForEach(voices) { voice in
-                            VoiceCard(
-                                voice: voice,
-                                onActivate: { onActivate(voice.id) },
-                                onDelete: { onDelete(voice.id) }
-                            )
-                        }
-                    }
-                }
+        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+            header
+            if split.personas.isEmpty {
+                emptyState
+            } else {
+                chipGrid
+                summaryRow
             }
-            .padding(Kiln.Space.l)
         }
     }
 
+    // MARK: Sections
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
-            Text("Your voices")
-                .font(Kiln.Font.title)
-            Text("Each voice is a fused adapter. Activating one loads it into Ollama.")
-                .font(Kiln.Font.caption)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.m) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+                Text("Shape your voice")
+                    .font(Kiln.Font.title)
+                Text("Pick which parts of your writing to include. You can train multiple personas and switch between them later.")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            if !split.personas.isEmpty {
+                selectionActions
+            }
         }
+    }
+
+    private var selectionActions: some View {
+        HStack(spacing: Kiln.Space.xs) {
+            Button("Select all") { setAll(selected: true) }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(split.personas.allSatisfy { $0.selected })
+            Button("Clear") { setAll(selected: false) }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(split.personas.allSatisfy { !$0.selected })
+        }
+    }
+
+    private var chipGrid: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: Kiln.Space.m) {
+            ForEach(split.personas) { persona in
+                PersonaChip(persona: persona) { toggle(persona.id) }
+            }
+        }
+    }
+
+    private var summaryRow: some View {
+        let selected = split.selectedPersonas
+        let totalSamples = split.selectedSampleCount
+        return HStack(spacing: Kiln.Space.xs) {
+            Text("Training on \(selected.count) \(selected.count == 1 ? "persona" : "personas") · \(formatCount(totalSamples)) samples")
+                .font(Kiln.Font.label)
+                .kerning(0.44)
+                .textCase(.uppercase)
+                .foregroundStyle(selected.isEmpty ? Color.secondary : Color.primary)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Training on \(selected.count) personas, \(totalSamples) total samples")
     }
 
     private var emptyState: some View {
-        VStack(spacing: Kiln.Space.xs) {
-            Spacer(minLength: Kiln.Space.xl)
-            Text("No voices yet.")
-                .font(Kiln.Font.body)
-                .foregroundStyle(.secondary)
-            Text("Finish a training run to save your first voice here.")
-                .font(Kiln.Font.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-            Spacer(minLength: Kiln.Space.xl)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Voice Card
-
-private struct VoiceCard: View {
-    let voice: Voice
-    let onActivate: () -> Void
-    let onDelete: () -> Void
-
-    @State private var isHovered = false
-    @State private var confirmingDelete = false
-
-    var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-            nameRow
-            metadataRow
-            Spacer(minLength: Kiln.Space.xs)
-            actionRow
-        }
-        .padding(Kiln.Space.m)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(minHeight: 160, alignment: .topLeading)
-        .background {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(voice.isActive ? Kiln.Palette.firingWash : Color.primary.opacity(0.04))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .stroke(voice.isActive ? Kiln.Palette.firing.opacity(0.45) : Color.clear, lineWidth: 1)
-        }
-        .onHover { isHovered = $0 }
-        .animation(Kiln.Motion.standard, value: voice.isActive)
-        .animation(Kiln.Motion.standard, value: isHovered)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(a11yLabel)
-    }
-
-    private var nameRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.xs) {
-            Text(voice.name)
+            Text("No personas detected")
                 .font(Kiln.Font.body.weight(.semibold))
                 .foregroundStyle(.primary)
-            Spacer(minLength: 0)
-            if voice.isActive {
-                ActiveBadge()
-            }
-        }
-    }
-
-    private var metadataRow: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
-            Text(voice.ollamaTag)
-                .font(Kiln.Font.mono)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("\(voice.sampleCount) samples · \(Self.relativeDate(from: voice.createdAt))")
+            Text("Your corpus will train as a single voice.")
                 .font(Kiln.Font.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Kiln.Space.m)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
         }
     }
 
-    @ViewBuilder
-    private var actionRow: some View {
-        if confirmingDelete {
-            HStack(spacing: Kiln.Space.xs) {
-                Text("Delete this voice?")
-                    .font(Kiln.Font.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Button("Cancel") { confirmingDelete = false }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                Button("Delete", role: .destructive) {
-                    confirmingDelete = false
-                    onDelete()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-            .transition(.opacity)
-        } else {
-            HStack(spacing: Kiln.Space.xs) {
-                Button(voice.isActive ? "Active" : "Activate", action: onActivate)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(voice.isActive)
-                Spacer(minLength: 0)
-                Button {
-                    confirmingDelete = true
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: Kiln.Icon.small))
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .opacity(isHovered ? 1 : 0.4)
-                .accessibilityLabel("Delete voice \(voice.name)")
-            }
-            .transition(.opacity)
+    // MARK: Mutation
+
+    private func toggle(_ id: Persona.ID) {
+        var next = split.personas
+        guard let idx = next.firstIndex(where: { $0.id == id }) else { return }
+        next[idx].selected.toggle()
+        split = VoiceSplit(personas: next)
+    }
+
+    private func setAll(selected: Bool) {
+        let next = split.personas.map {
+            Persona(id: $0.id, label: $0.label, sampleCount: $0.sampleCount, selected: selected)
         }
+        split = VoiceSplit(personas: next)
     }
 
-    private var a11yLabel: String {
-        let state = voice.isActive ? "active" : "inactive"
-        return "Voice \(voice.name), \(state). Tag \(voice.ollamaTag). \(voice.sampleCount) samples."
+    private func formatCount(_ n: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: n)) ?? String(n)
     }
-
-    /// Warmer than an absolute medium date for a library that grows over time —
-    /// "2 days ago" reads like something a user would say. Falls back to an
-    /// absolute date after 30 days, when relative starts to feel lossy.
-    private static func relativeDate(from date: Date) -> String {
-        let elapsed = Date().timeIntervalSince(date)
-        if elapsed > 60 * 60 * 24 * 30 {
-            return absoluteDateFormatter.string(from: date)
-        }
-        return relativeDateFormatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .full
-        f.dateTimeStyle = .named
-        return f
-    }()
-
-    private static let absoluteDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
 }
 
-// MARK: - Active badge
+// MARK: - Persona Chip
 
-private struct ActiveBadge: View {
+private struct PersonaChip: View {
+    let persona: Persona
+    let onToggle: () -> Void
+
+    @State private var isHovered = false
+
     var body: some View {
-        HStack(spacing: Kiln.Space.xxs) {
-            Circle()
-                .fill(Kiln.Palette.firing)
-                .frame(width: 6, height: 6)
-            Text("Active")
-                .font(Kiln.Font.label)
-                .kerning(0.44)
-                .foregroundStyle(.primary)
-                .textCase(.uppercase)
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+                HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.xs) {
+                    Image(systemName: persona.selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(persona.selected ? Kiln.Palette.firing : Color.secondary)
+                        .font(.system(size: Kiln.Icon.small))
+                    Text(persona.label)
+                        .font(Kiln.Font.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                }
+                Text("\(formatCount(persona.sampleCount)) samples")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Kiln.Space.m)
+            .background {
+                RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                    .fill(persona.selected ? Kiln.Palette.firingWash : Color.primary.opacity(0.04))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                    .stroke(persona.selected ? Kiln.Palette.firing.opacity(0.45) : Color.clear, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous))
         }
-        .padding(.horizontal, Kiln.Space.xs)
-        .padding(.vertical, 2)
-        .background {
-            Capsule().fill(Kiln.Palette.firingWash)
-        }
-        .accessibilityHidden(true)
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(Kiln.Motion.standard, value: persona.selected)
+        .accessibilityLabel("\(persona.label), \(persona.sampleCount) samples, \(persona.selected ? "included" : "excluded")")
+        .accessibilityAction(named: persona.selected ? "Exclude" : "Include", onToggle)
+    }
+
+    private func formatCount(_ n: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: n)) ?? String(n)
     }
 }
 
 // MARK: - Previews
 
-#Preview("Empty library") {
-    VoiceSplitterView(
-        voices: [],
-        onActivate: { _ in },
-        onDelete: { _ in }
-    )
-    .frame(width: 780, height: 420)
+/// SwiftUI Previews don't support `@State` at the top level; this wrapper
+/// threads a mutable binding through so the chips actually toggle in the
+/// canvas. Ported from the Apple sample project pattern.
+private struct StatefulPreviewWrapper<Value, Content: View>: View {
+    @State private var value: Value
+    private let content: (Binding<Value>) -> Content
+
+    init(_ initial: Value, @ViewBuilder content: @escaping (Binding<Value>) -> Content) {
+        _value = State(initialValue: initial)
+        self.content = content
+    }
+
+    var body: some View { content($value) }
 }
 
-#Preview("Single voice — first run") {
-    VoiceSplitterView(
-        voices: [Voice.mockTimFirstRun],
-        onActivate: { _ in },
-        onDelete: { _ in }
-    )
-    .frame(width: 780, height: 420)
+#Preview("Three personas — mixed selection") {
+    StatefulPreviewWrapper(
+        VoiceSplit(personas: [
+            Persona(label: "drafts", sampleCount: 1_240, selected: true),
+            Persona(label: "formal", sampleCount: 860, selected: false),
+            Persona(label: "notes", sampleCount: 320, selected: true)
+        ])
+    ) { binding in
+        VoiceSplitterView(split: binding)
+            .padding(Kiln.Space.l)
+            .frame(width: 780, height: 420)
+    }
 }
 
-#Preview("Three voices — one active") {
-    VoiceSplitterView(
-        voices: Voice.mockLibrary,
-        onActivate: { _ in },
-        onDelete: { _ in }
-    )
-    .frame(width: 860, height: 520)
+#Preview("Single persona — all selected") {
+    StatefulPreviewWrapper(
+        VoiceSplit(personas: [
+            Persona(label: "drafts", sampleCount: 2_100, selected: true)
+        ])
+    ) { binding in
+        VoiceSplitterView(split: binding)
+            .padding(Kiln.Space.l)
+            .frame(width: 780, height: 320)
+    }
 }
 
-// MARK: - Mocks
-
-extension Voice {
-    static let mockTimFirstRun = Voice(
-        name: "Tim — drafts",
-        ollamaTag: "kiln/tim-drafts:latest",
-        createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 2),
-        sampleCount: 1_240,
-        isActive: true
-    )
-
-    static let mockLibrary: [Voice] = [
-        Voice(
-            name: "Tim — drafts",
-            ollamaTag: "kiln/tim-drafts:latest",
-            createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 2),
-            sampleCount: 1_240,
-            isActive: true
-        ),
-        Voice(
-            name: "Tim — formal",
-            ollamaTag: "kiln/tim-formal:2026-04-18",
-            createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 6),
-            sampleCount: 860,
-            isActive: false
-        ),
-        Voice(
-            name: "Tim — notes only",
-            ollamaTag: "kiln/tim-notes:2026-04-12",
-            createdAt: Date(timeIntervalSinceNow: -3600 * 24 * 12),
-            sampleCount: 320,
-            isActive: false
-        )
-    ]
+#Preview("Empty — no personas detected") {
+    StatefulPreviewWrapper(VoiceSplit(personas: [])) { binding in
+        VoiceSplitterView(split: binding)
+            .padding(Kiln.Space.l)
+            .frame(width: 780, height: 320)
+    }
 }

@@ -58,7 +58,9 @@ struct StageRouterView: View {
                 project: project,
                 model: model.trainModel,
                 exportModel: model.exportModel,
-                onStart: { model.startTraining(projectID: project.id) },
+                onStart: { split in
+                    model.startTraining(projectID: project.id, voiceSplit: split)
+                },
                 onCancel: { model.cancelTraining() },
                 onContinue: {
                     withAnimation(Kiln.Motion.standard) {

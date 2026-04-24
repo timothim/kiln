@@ -119,14 +119,15 @@ final class TrainModel {
         self.runner = runner
     }
 
-    func start(request: TrainingRequest) {
+    func start(request: TrainingRequest, voiceSplit: VoiceSplit? = nil) {
         guard case .idle = status else { return }
         guard let runner else {
             status = .failed(.other("no training runner configured"))
             return
         }
-        prepareForStart(request: request)
-        let stream = runner.runStreaming(request: request)
+        let threaded = request.withVoiceSplit(voiceSplit ?? request.voiceSplit)
+        prepareForStart(request: threaded)
+        let stream = runner.runStreaming(request: threaded)
         task = Task { [weak self] in
             await self?.consume(stream: stream)
         }

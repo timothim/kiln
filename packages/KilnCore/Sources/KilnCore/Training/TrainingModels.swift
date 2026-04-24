@@ -47,6 +47,10 @@ public struct TrainingRequest: Sendable, Hashable {
     public let trainerModule: String?
     /// Test seam — when non-nil, passed through as `--trainer-entry`.
     public let trainerEntry: String?
+    /// Pre-training persona configuration. M8 carries this for UI continuity;
+    /// the Python sidecar ignores it. M9+ will teach the trainer to honor
+    /// persona slicing — at that point the runner's arg-builder emits a flag.
+    public let voiceSplit: VoiceSplit?
 
     public init(
         datasetURL: URL,
@@ -56,7 +60,8 @@ public struct TrainingRequest: Sendable, Hashable {
         hyperparameters: Hyperparameters = Hyperparameters(),
         itersOverride: Int? = nil,
         trainerModule: String? = nil,
-        trainerEntry: String? = nil
+        trainerEntry: String? = nil,
+        voiceSplit: VoiceSplit? = nil
     ) {
         self.datasetURL = datasetURL
         self.runDir = runDir
@@ -66,6 +71,21 @@ public struct TrainingRequest: Sendable, Hashable {
         self.itersOverride = itersOverride
         self.trainerModule = trainerModule
         self.trainerEntry = trainerEntry
+        self.voiceSplit = voiceSplit
+    }
+
+    public func withVoiceSplit(_ split: VoiceSplit?) -> TrainingRequest {
+        TrainingRequest(
+            datasetURL: datasetURL,
+            runDir: runDir,
+            model: model,
+            seed: seed,
+            hyperparameters: hyperparameters,
+            itersOverride: itersOverride,
+            trainerModule: trainerModule,
+            trainerEntry: trainerEntry,
+            voiceSplit: split
+        )
     }
 }
 

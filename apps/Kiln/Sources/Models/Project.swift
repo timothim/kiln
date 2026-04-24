@@ -29,6 +29,11 @@ struct Project: Identifiable, Hashable {
     var ingestReport: IngestReport?
     var preparedDatasetURL: URL?
     var trainingReport: TrainingReport?
+    /// Per-project persona configuration captured pre-training. Nil means
+    /// the user hasn't touched the persona section; TrainStageView renders
+    /// a seeded default in that case. Persists across stage transitions so
+    /// re-entering the Train stage shows the previous selection.
+    var voiceSplit: VoiceSplit?
 
     init(id: UUID = UUID(),
          name: String,
@@ -40,7 +45,8 @@ struct Project: Identifiable, Hashable {
          totalChunks: Int? = nil,
          ingestReport: IngestReport? = nil,
          preparedDatasetURL: URL? = nil,
-         trainingReport: TrainingReport? = nil) {
+         trainingReport: TrainingReport? = nil,
+         voiceSplit: VoiceSplit? = nil) {
         self.id = id
         self.name = name
         self.folderName = folderName
@@ -52,6 +58,7 @@ struct Project: Identifiable, Hashable {
         self.ingestReport = ingestReport
         self.preparedDatasetURL = preparedDatasetURL
         self.trainingReport = trainingReport
+        self.voiceSplit = voiceSplit
     }
 
     /// Safe slug for terminal hand-off copy. Lowercase, alphanumerics and hyphens only.
