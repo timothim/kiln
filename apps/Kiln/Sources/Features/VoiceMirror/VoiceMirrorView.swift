@@ -110,22 +110,41 @@ struct VoiceMirrorView: View {
         }
     }
 
+    /// Per-column minimum width. Below this the text wraps too aggressively to
+     /// compare continuations side by side. When the container cannot fit
+     /// four columns at this width, the grid scrolls horizontally instead of
+     /// collapsing. Flagged as a candidate for a future
+     /// `Kiln.Layout.voiceMirrorColumnMin` token.
+    private static let columnMinWidth: CGFloat = 200
+
     @ViewBuilder
     private var columnsGrid: some View {
         if model.hasAnyContent {
-            HStack(alignment: .top, spacing: Kiln.Space.m) {
-                ForEach(model.reflections) { reflection in
-                    VoiceMirrorColumn(
-                        reflection: reflection,
-                        userAnswer: $model.userAnswer,
-                        onRetry: { model.retry(reflection.source) }
-                    )
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: Kiln.Space.m) {
+                    ForEach(model.reflections) { reflection in
+                        VoiceMirrorColumn(
+                            reflection: reflection,
+                            userAnswer: $model.userAnswer,
+                            onRetry: { model.retry(reflection.source) }
+                        )
+                        .frame(minWidth: Self.columnMinWidth,
+                               maxWidth: .infinity,
+                               alignment: .topLeading)
+                    }
                 }
+                .frame(minWidth: totalGridMinWidth,
+                       maxWidth: .infinity,
+                       alignment: .topLeading)
             }
         } else {
             emptyState
         }
+    }
+
+    private var totalGridMinWidth: CGFloat {
+        let cols = CGFloat(model.reflections.count)
+        return cols * Self.columnMinWidth + max(0, cols - 1) * Kiln.Space.m
     }
 
     private var emptyState: some View {
