@@ -187,12 +187,17 @@ private struct GrowingModelPromptCard: View {
 private struct StylizationGauge: View {
     let score: Double
 
+    @State private var lastAnnouncedMilestone: Int = 0
+
     static let barWidth: CGFloat = 80
+    static let milestones: [Int] = [25, 50, 75, 100]
+
     private var clamped: Double { max(0, min(100, score)) }
+    private var pct: Int { Int(clamped) }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Kiln.Space.xxs) {
-            Text("\(Int(clamped))%")
+            Text("\(pct)%")
                 .font(Kiln.Font.label)
                 .kerning(0.44)
                 .foregroundStyle(.secondary)
@@ -209,7 +214,29 @@ private struct StylizationGauge: View {
             }
             .frame(width: Self.barWidth, height: Kiln.Space.xxs)
         }
-        .accessibilityLabel("Stylization \(Int(clamped)) percent")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Stylization")
+        .accessibilityValue(accessibilityValueText)
+        .onChange(of: pct) { _, newValue in
+            announceIfMilestoneCrossed(newValue)
+        }
+    }
+
+    private var accessibilityValueText: String {
+        switch pct {
+        case 100: return "100 percent — fully stylized"
+        case 75...: return "\(pct) percent — nearly fully stylized"
+        case 50...: return "\(pct) percent — halfway, your voice is emerging"
+        case 25...: return "\(pct) percent — building"
+        default:   return "\(pct) percent — starting"
+        }
+    }
+
+    private func announceIfMilestoneCrossed(_ newValue: Int) {
+        guard let milestone = Self.milestones.last(where: { newValue >= $0 }),
+              milestone > lastAnnouncedMilestone else { return }
+        lastAnnouncedMilestone = milestone
+        AccessibilityNotification.Announcement("Stylization reached \(milestone) percent").post()
     }
 }
 
