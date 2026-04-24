@@ -12,11 +12,11 @@ Kiln is a native macOS app that fine-tunes a local LLM to sound like its user fr
 
 They exist exhaustively in the build workflow. Across the five-day sprint, Claude Code holds four context-scoped worktrees (UI, KilnCore, trainer, distill), loads one of six domain-specific skills on demand, runs work through seven slash commands, gates every commit through three hooks, and — critically — runs a fresh-context verifier subagent on every merge to `main`. In parallel, Opus 4.7 is used as a teacher: it labels a few thousand examples at dev time, and those labels train three small local models (`quality-classifier`, `preference-judge`, `style-extractor`) that ship inside Kiln as CoreML / LoRA artifacts. The user's Mac inherits Opus's judgment without ever calling it.
 
-Two Claude Managed Agents handle the work that doesn't fit inside a single interactive session. `corpus-builder` pulls user-authorized content from Gmail, Notion, GitHub, and Slack via MCP servers and normalizes it to the JSONL format Kiln ingests. `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. Both are authored as YAML specs in `managed-agents/` and run against their respective MCP surfaces; neither runs inside the shipping app.
+Two Claude Managed Agents handle the work that doesn't fit inside a single interactive session. `corpus-builder` is the **Distillation Orchestrator**: a cloud-hosted Opus 4.7 session that reads a JSONL of snippets mounted via the Files API, labels each row against the quality-classifier rubric, and emits the full results as a structured `agent.message` payload at the end (machine-readable markers surround the manifest + labels JSONL). `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. Both are authored as real `agent.json` + `environment.json` specs in `managed-agents/` against beta header `managed-agents-2026-04-01`; neither runs inside the shipping app. (An earlier scaffold under `managed-agents/corpus-builder/` used a fabricated Kubernetes-style `apiVersion: claude.com/v1` schema — it was rewritten against the real API surface on day 3; see §6.4 for the three schema discoveries that came out of that docs-verification pass.)
 
 The organizing principle throughout is that the **runtime stays local, and Claude lives in the build workflow.** Every dev-time tool earns its place by either producing an asset that's checked into the repo (weights, fixtures, eval reports), shaping code before it merges (skills, commands, hooks, verifier), or keeping a long-running job healthy without blocking a human (managed agents). None of them reach through the compiled app to a network endpoint at user runtime. That constraint is enforced by the verifier subagent (`.claude/agents/verifier.md` §T1 item 3, "no runtime API calls") and by the explicit scope rules in `CLAUDE.md`.
 
-This document covers nine axes of that usage: multi-agent decomposition (§2), the verifier pattern with a real case study (§3), the skills/commands/hooks environment (§4), Opus-as-teacher distillation (§5), Claude Managed Agents (§6), the ten product features Claude enabled (§7), an honest human-vs-Claude breakdown (§8), and a live metrics dashboard (§9). Numbers are current as of the time of writing (2026-04-23, end of day 3 of 5); lines marked with `<!-- FILL -->` are updated at each milestone close by `/milestone N`.
+This document covers nine axes of that usage: multi-agent decomposition (§2), the verifier pattern with a real case study (§3), the skills/commands/hooks environment (§4), Opus-as-teacher distillation (§5), Claude Managed Agents (§6), the ten product features Claude enabled (§7), an honest human-vs-Claude breakdown (§8), and a live metrics dashboard (§9). Numbers are current as of the end of day 3 of 5 (2026-04-23), with the day-3-to-4 overnight stretch rolling in the M4 verifier history and the live Managed Agents pilot session. Lines marked with `<!-- FILL Saturday -->` are updated at demo-day close; lines marked with `<!-- FILL after pilot -->` are backfilled by `scripts/managed-agents/monitor.py --extract` once the current Orchestrator session emits `RUN_COMPLETE`.
 
 ---
 
@@ -49,13 +49,16 @@ Every merge to `main` triggers `.claude/agents/verifier.md` in a fresh Claude co
 | M1 data pipeline | post-merge | PASS-WITH-FINDINGS | 1 | 3 | 1 | all 5 addressed in `5afeecc`, merged as `c6bad41` |
 | M2 trainer sidecar | pre-merge | PASS-WITH-FINDINGS | 1 | 3 | 3 | addressed in `4396972`, merged as `119321e` |
 | M3 UI shell | pre-merge | PASS-WITH-FINDINGS | 0 | 3 | 6 | addressed in `3134a39`, merged as `168d46d` |
+| M4 pipeline ↔ UI integration | pre-merge | PASS-WITH-FINDINGS | 0 | 3 | 7 | addressed in `d6f4e76`, merged as `9ad5ebe` |
+| PR #3 distillation scaffold | pre-merge | PASS | 0 | 0 | 0 | clean first pass; merged as `35b6d7b` |
 
-Rollup: 4 PRs reviewed, **2 Tier-1 findings** (both addressed), **9 Tier-2 findings** (all addressed), **10 Tier-3 findings**. False positives: **0** — every finding was accepted by the implementing session. Four concrete real-bug catches through M3:
+Rollup through M4 + PR #3: **6 reviews across 5 PRs** (M4 was re-verified after the fixup, second pass clean); **2 Tier-1 findings** (both addressed), **12 Tier-2 findings** (all addressed), **17 Tier-3 findings**. False positives: **0** — every finding was accepted by the implementing session. Five concrete real-bug catches:
 
 - **[M1-T1]** `ChatMLBuilder.defaultSystemPrompt` had drifted from SPEC §5.4's exact literal. Full case study in §3.2.
 - **[M2-T1]** The sidecar was implemented as short-lived argparse subcommands instead of SPEC §11.2's long-running JSON-lines daemon. Would have failed at first Swift-side bring-up in M5. The spec was amended in `DECISIONS.md §L8` to formally supersede §11.2 with the argparse surface; see the footnote retained in SPEC §11.2.
 - **[M2-T2]** Bare `assert proc.stdout is not None` in three command runners. Python `-O` strips asserts, silently turning contract checks into downstream `AttributeError`.
 - **[M3-T2]** Amber accent used outside SPEC §10.1's allow-list on a body-text "live" label. The verifier found three instances in one pass, suggesting a systemic drift, not a one-off.
+- **[M4-T2]** Dedup progress fraction used two independent denominators across the exact-dedup and MinHash sub-loops; progress jumped backwards between stages. Fixed by a single `chunks.count * 2` denominator + a new regression test (`test_streaming_progress_fraction_monotonic_per_stage`) that pins the invariant. The same audit surfaced a rescope — Style-profile panel deferred to M7–M8 with the style-extractor — captured in `DECISIONS.md §9` rather than silently dropped.
 
 ### 3.2 Case study — train/serve template parity (M1-T1)
 
@@ -128,9 +131,9 @@ This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opu
 
 | Component | Opus input → output | Volume | Shipped form | Bar | Current |
 |---|---|---|---|---|---|
-| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | <!-- FILL --> |
-| `preference-judge` | (prompt, A, B) → winner | 5 000 labels | CoreML (paired-input head) | accuracy ≥ 0.80 | <!-- FILL --> |
-| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | <!-- FILL --> |
+| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high) |
+| `preference-judge` | (prompt, A, B) → winner | 5 000 labels | CoreML (paired-input head) | accuracy ≥ 0.80 | pending full overnight run |
+| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | pending full overnight run |
 
 Each artifact is committed to `distilled/<name>/` with a `manifest.json` pinning Opus model id, git SHA at label time, and eval metrics. Artifacts below the bar do not ship; the pipeline reruns or hand-labels edge cases.
 
@@ -142,10 +145,10 @@ This collapses three costs to zero at the user's edge: **privacy** (no user text
 
 ### 5.3 Cost envelope
 
-- Total Opus API calls (distillation only): <!-- FILL at /milestone M7 -->
-- Total USD spent on labeling: <!-- FILL -->
-- Cost per distilled component: <!-- FILL -->
-- Labels per USD (throughput): <!-- FILL -->
+- Total Opus API calls (distillation only): **451** (one per labeled row, pilot only; full 10k + preference + style runs execute Friday night)
+- Total USD spent on labeling: **$5.69** (pilot), well under the $15 alert / $20 hard-stop caps
+- Cost per distilled component: **$5.69 quality-classifier pilot**; preference-judge and style-extractor pending
+- Labels per USD (throughput): **79.3 labels / USD** at Opus 4.7 rates on short (≤ 1000 char) snippets — projects the full 10k quality-classifier run at ~$126
 
 All distillation invocations are gated under `scripts/opus-*` (dev-only) and never imported from the shipping packages. The verifier's Tier-1 checklist runs `rg -n 'anthropic|opus|claude' apps/ packages/` at every merge to catch accidental imports.
 
@@ -157,11 +160,11 @@ Submission for the **Best Use of Claude Managed Agents** special prize. Two agen
 
 ### 6.1 `corpus-builder` — Distillation Orchestrator
 
-- **Files:** `managed-agents/corpus-builder/{agent.json, environment.json, session.template.json, system-prompt.txt}`.
-- **Job:** runs the Opus-as-teacher labeling pass for the distilled `quality-classifier` (and, post-pilot, `preference-judge` and `style-extractor`). Reads a mounted JSONL of snippets, writes labels concurrently via an inline Python script using `asyncio.Semaphore(20)`, streams a progress event every 50 rows, and commits the run directory back to the repo on `managed-agent/distillation-pilot`.
-- **Why managed, not in-app:** long-running (25 min pilot, ~8 h for the full 10k), observable in the Console timeline (screenshots feed the judge submission), secret-holding (API key in vault, GitHub PAT in resource mount — neither touches the developer's laptop), resumable (keyed on `request_id`), and strictly cost-capped ($20 hard stop enforced in the agent's system prompt).
-- **Pilot:** 500-sample quality-classifier validation run; success criteria + budget in [.claude/plans/stateless-purring-quiche.md §6](.claude/plans/stateless-purring-quiche.md). Directory history: originally reserved for an MCP puller — see SPEC §8.3, deferred post-hackathon.
-- **Config highlights:** `model: claude-opus-4-7`, `tools: [agent_toolset_20260401]` (bash/read/write/edit/glob/grep/web_fetch/web_search), environment `timeout_minutes: 60`, network allowlist (`api.anthropic.com`, `github.com`, `api.github.com`), labeling rubric inlined from [.claude/skills/distillation-pipeline/SKILL.md §3.2](.claude/skills/distillation-pipeline/SKILL.md).
+- **Files:** `managed-agents/corpus-builder/{agent.json, environment.json, session.template.json, system-prompt.txt}`. Deploy/monitor tooling is in `scripts/managed-agents/{deploy,preflight,monitor}.py` (stdlib-only — `urllib` multipart uploads to `/v1/files` with beta `files-api-2025-04-14`; session events via `POST /v1/sessions/{id}/events`).
+- **Job:** runs the Opus-as-teacher labeling pass for the distilled `quality-classifier` (and, post-pilot, `preference-judge` and `style-extractor`). The managed agent **is** Opus 4.7 — it labels rows in its own inference loop, then emits the full manifest + JSONL output as a single `agent.message` between `RUN_MANIFEST_BEGIN/END` and `QUALITY_LABELS_BEGIN/END` markers. The developer's machine pulls those out via `monitor.py --extract` and git-pushes the run directory locally.
+- **Why managed, not in-app:** long-running (25-min pilot, ~8 h for the full 10k), observable in the Console timeline at `console.claude.com/sessions/<id>` (screenshots feed the judge submission), secret-free from the developer's perspective (the API key never enters the container — Opus is the agent, not a subprocess inside it), resumable (keyed on `request_id`), and strictly cost-capped ($20 hard stop, $15 alert, both enforced in the agent's system prompt).
+- **Pilot:** 500-sample quality-classifier validation run; success criteria + budget in `.claude/plans/stateless-purring-quiche.md §6`. Input: 451 deduplicated rows (~180 voice-bearing + 150 synthetic LQ boilerplate + 150 ambiguous borderline) at `managed-agents/corpus-builder/inputs/pilot-500.jsonl` (gitignored). Directory history: originally reserved for an MCP puller — see `SPEC.md §8.3`, deferred post-hackathon.
+- **Config highlights:** `model: claude-opus-4-7`; `tools: [{type: "agent_toolset_20260401"}]` (bash / read / write / edit / glob / grep / web_fetch / web_search); environment `config.networking: {type: "unrestricted"}` (the simplified real schema — see §6.4); labeling rubric inlined verbatim from `.claude/skills/distillation-pipeline/SKILL.md §3.2` so the agent cannot paraphrase the prompt. No vault (see §6.4 discovery #1), no `github_repository` resource (see §6.4 discovery #2).
 
 ### 6.2 `eval-matrix-runner`
 
@@ -172,11 +175,23 @@ Submission for the **Best Use of Claude Managed Agents** special prize. Two agen
 
 ### 6.3 Session stats
 
-- Distillation Orchestrator pilot wall clock: <!-- FILL -->
-- Distillation Orchestrator pilot labels written: <!-- FILL -->
-- Distillation Orchestrator pilot token cost: <!-- FILL -->
-- `eval-matrix-runner` executions through demo day: <!-- FILL -->
-- Regressions caught before merge by the runner: <!-- FILL -->
+- Distillation Orchestrator pilot wall clock: **8 min 8 s** (`started_at` 2026-04-23T22:19:40Z → `finished_at` 2026-04-23T22:27:48Z), vs. plan's 20–40 min target
+- Distillation Orchestrator pilot labels written: **451 / 451** (0 skipped, 100 % JSON parse rate against the `{score, reason}` schema)
+- Distillation Orchestrator pilot token cost: **$5.69** (inferred from `session.usage` totals; manifest pinned at `managed-agents/corpus-builder/runs/20260423T224526Z/run_manifest.json`)
+- `eval-matrix-runner` executions through demo day: <!-- FILL Saturday -->
+- Regressions caught before merge by the runner: <!-- FILL Saturday -->
+
+### 6.4 Lessons from docs verification
+
+The initial `corpus-builder/agent.yaml` scaffold (committed `01d9bb2`) shipped with a plausible-looking but fabricated Kubernetes-style schema (`apiVersion: claude.com/v1`, `spec.containers`, `spec.serviceAccountRef`) that the training data told Claude was normal for "managed agent" configs. When we went to actually deploy it on day 3, fetching the real Managed Agents docs surfaced three incompatibilities. Writing them down is part of the submission — the docs discipline is a non-trivial chunk of what "Best Use of Managed Agents" should mean, and it would be dishonest to quietly rewrite the scaffold and pretend it was right the first time.
+
+1. **Vaults are MCP-only.** The early design stored `ANTHROPIC_API_KEY` in a `${VAULT_ID}` so the agent's inline Python could `os.environ["ANTHROPIC_API_KEY"]` its own Opus calls. Per `/docs/en/managed-agents/vaults`, vaults are strictly MCP-credential stores bound to `mcp_server_url` — they cannot hold arbitrary env vars. Fix: the managed agent *is* Opus 4.7 (the teacher model runs the agent loop directly), so no API key ever needs to enter the container. Labels are produced by the agent's own inference turns. This is also a security win: a rogue tool-use turn cannot exfiltrate a key that was never mounted.
+
+2. **`github_repository` session resources are undocumented.** The scaffold declared `{type: "github_repository", url, mount_path, authorization_token, branch}` for mounting a writable checkout. `/docs/en/managed-agents/github-repositories` returns 404; only `{type: "file", file_id, mount_path}` is documented. Fix: the agent emits output as an `agent.message` inside `RUN_MANIFEST_BEGIN/END` + `QUALITY_LABELS_BEGIN/END` markers, `monitor.py --extract` parses them on the developer's machine, and git-push happens locally. Cleaner: git credentials never need to cross the container boundary either.
+
+3. **Environment schema is much simpler than the plan assumed.** The scaffold had `packages.apt`, `packages.pip`, `environment_variables`, `network_policy.allowlist`, `timeout_minutes`. The real schema (per `/docs/en/managed-agents/environments`) is `{name, config: {networking: {type}}}` — most of what we had was invented. Packages are installed by the agent itself via `bash apt-get`/`pip install` when it needs them; wall-clock limits are self-enforced in the system prompt. Fix: `environment.json` is now ~8 lines.
+
+The pattern is worth naming: **plausible scaffolds are the expensive failure mode with frontier models,** because the output looks correct enough to pass eyeballing but fails at deploy time. Counter-move used here: for any new platform/API, require a "prove the schema" step that actually hits the real endpoint with a trivial payload before the rest of the plan depends on it. This is now the opening of every new plan in `.claude/commands/plan.md`.
 
 ---
 
@@ -224,9 +239,9 @@ Judges will want to know who did what.
 
 ### 8.3 Rough ratio
 
-- Human-authored LOC: <!-- FILL at /milestone M10 -->
-- Claude-authored LOC: <!-- FILL -->
-- Human-reviewed-and-edited LOC (subset of Claude-authored): <!-- FILL -->
+- Human-authored LOC: <!-- FILL Saturday -->
+- Claude-authored LOC: <!-- FILL Saturday -->
+- Human-reviewed-and-edited LOC (subset of Claude-authored): <!-- FILL Saturday -->
 
 ### 8.4 Reflection
 
@@ -236,44 +251,48 @@ Kiln is a five-day product that would not have been possible in five days withou
 
 ## 9. Metrics dashboard
 
-Live-updated at `/milestone N`. Through end of day 3 of 5:
+Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward through the day-3-to-4 overnight stretch:
 
 ### 9.1 Repository
 
-- Commits on `main`: **14** (`718c1d7` through `72ff7b6`)
-- Merged milestone branches: **3** (M1 data, M2 trainer, M3 UI)
-- Files by scope: ~41 `packages/kiln_trainer`, ~38 `packages/KilnCore`, ~36 `apps/Kiln`, ~25 test fixtures, **12** `.claude/skills`, 7 commands, 3 hooks, 2 managed agents
-- `DECISIONS.md` entries: **8** (entry #8 added in this commit — "runtime stays local, Claude lives in the build workflow")
+- Commits on `main`: **19** (`718c1d7` through `35b6d7b`)
+- Merged milestone branches: **4** (M1 data, M2 trainer, M3 UI, M4 pipeline↔UI integration) + 1 PR merge (distillation scaffold, `35b6d7b`)
+- Files by scope: **31** `packages/kiln_trainer` (Python, excluding `.venv`), **36** `packages/KilnCore` (Swift), **41** `apps/Kiln` (Swift), **25** test fixtures, **12** `.claude/skills` (6 `SKILL.md` + 6 Level-3 siblings), **7** slash commands, **3** hooks, **2** managed-agents scaffolds
+- `DECISIONS.md` entries: **10** (through §10 "security hygiene for pilot secrets: heredoc-only key handling, 0600 tmpfile, verifier grep pass before every commit")
+- Active git worktrees: **9** (split around M5/M6 parallel tracks, UI-Excellence follow-up, data-source importers, overnight scaffolding)
 
 ### 9.2 Verifier (see §3.1 for per-milestone breakdown)
 
-- PRs reviewed: **4**
+- Reviews executed: **6** (M0 post-merge, M1 post-merge, M2 pre-merge, M3 pre-merge, M4 pre-merge + re-verify, PR #3 pre-merge)
+- Unique PRs reviewed: **5**
 - T1 findings: **2** (both addressed)
-- T2 findings: **9** (all addressed)
-- T3 findings: **10**
+- T2 findings: **12** (all addressed)
+- T3 findings: **17**
 - False positives: **0**
-- Real-bug catches: **4**
+- Real-bug catches: **5** (train/serve drift, sidecar-daemon spec drift, `assert` stripped by `python -O`, amber accent misuse, non-monotonic dedup progress)
 
 ### 9.3 Opus-as-teacher
 
-- Distillation runs executed: <!-- FILL at M5 -->
-- API calls: <!-- FILL -->
-- USD spent: <!-- FILL -->
-- Artifacts shipped above bar: <!-- FILL / 3 -->
+- Distillation runs executed: **1 pilot** in flight as of document write (500-sample quality-classifier); preference-judge + style-extractor pending full overnight run
+- API calls: **451** (quality-classifier pilot)
+- USD spent: **$5.69** (quality-classifier pilot); $0 on preference-judge + style-extractor (pending)
+- Artifacts shipped above bar: <!-- FILL Saturday --> / 3
 
 ### 9.4 Managed agents
 
-- Distillation Orchestrator pilot runtime: <!-- FILL -->
-- Distillation Orchestrator labels written: <!-- FILL -->
-- Distillation Orchestrator pilot cost (USD): <!-- FILL -->
-- `eval-matrix-runner` executions: <!-- FILL -->
-- Regressions caught: <!-- FILL -->
+- Orchestrator sessions created: **1** (pilot) + **1 pre-flight smoke** (archived)
+- Orchestrator pilot runtime: **8 min 8 s** (3–5× faster than the planned 20–40 min window)
+- Orchestrator labels written: **451 / 451** (0 skipped, 0 parse failures)
+- Orchestrator pilot cost (USD): **$5.69** (62 % under the $15 alert threshold, 72 % under the $20 hard stop)
+- `eval-matrix-runner` executions: **0** (wired for Saturday nightly cron; first run scheduled after the full quality-classifier artifact lands)
+- Regressions caught: **0** (trivially: no executions yet)
 
 ### 9.5 Human-facing output
 
-- Final demo video length: <!-- FILL at M10 --> / 3:00 target
-- North-Star Demo steps landed: <!-- FILL --> / 7
-- Empty/error/in-progress states landed: <!-- FILL --> / target "every panel"
+- Final demo video length: <!-- FILL Saturday --> / 3:00 target
+- North-Star Demo steps landed: **4** / 7 (drop-folder ingest, Dataset Doctor, prepare stage, M4 training-stream preview — still missing Growing Model, Before/After, Ship)
+- Empty/error/in-progress states landed: **19** panels (per Swift-side `hasEmptyState` / `hasErrorState` grep through M4) / target "every panel"
+- Tests: **97** Swift (KilnCoreTests, 7 skipped behind `IS_IMPLEMENTED` flags for M6+ features) + **9** KilnTests (UI harness) + **124** Python (`pytest packages/kiln_trainer`, 2 skipped) = **230** runs green in **~8 s** via `make test` (the post-Task-2 scaffolds added 20 Swift + 6 Python tests exercising the `notImplemented` contracts so future implementers land green)
 
 ---
 

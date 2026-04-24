@@ -27,6 +27,7 @@ help:
 	@echo "  design-export  Regenerate docs/design/tokens.dtcg.json"
 	@echo "  package        Build a distributable .dmg (not signed)"
 	@echo "  distill        Shortcut: python scripts/opus-distill/run.py --help"
+	@echo "  demo-check     End-to-end North-Star Demo sanity (<5 min, skips unimplemented)"
 	@echo "  video          Shortcut: open docs/demo/README.md in the editor"
 	@echo "  clean          Remove build artifacts and caches"
 
@@ -148,6 +149,14 @@ distill:
 	@$(PYTHON) scripts/opus-distill/run.py --help || \
 	  echo "!! scripts/opus-distill/run.py not executable yet"
 
+# --- demo-check ---------------------------------------------------------
+
+.PHONY: demo-check
+demo-check:
+	@$(PYTHON) scripts/demo-check.py \
+	  --budget-seconds 300 \
+	  --out .kiln-demo-check.json
+
 # --- video --------------------------------------------------------------
 
 .PHONY: video
@@ -164,6 +173,6 @@ clean:
 	       packages/KilnCore/.build packages/KilnCore/.swiftpm \
 	       packages/kiln_trainer/.venv packages/kiln_trainer/__pycache__ \
 	       .ruff_cache .pytest_cache .mypy_cache \
-	       .kiln-last-test-status
+	       .kiln-last-test-status .kiln-demo-check.json
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "cleaned"
