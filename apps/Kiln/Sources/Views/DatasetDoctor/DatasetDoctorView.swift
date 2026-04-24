@@ -10,7 +10,7 @@ struct DatasetDoctorView: View {
     let onReset: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: subtitle,
@@ -24,7 +24,7 @@ struct DatasetDoctorView: View {
             Spacer(minLength: 0)
             ctaRow
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -33,7 +33,7 @@ struct DatasetDoctorView: View {
     }
 
     private var funnelRow: some View {
-        HStack(alignment: .top, spacing: Kiln.Space.m) {
+        HStack(alignment: .top, spacing: Kiln.Space.l) {
             LiveCountTicker(label: "Files read", value: report.filesParsed)
             LiveCountTicker(label: "Chunks", value: report.chunksBeforeDedup)
             LiveCountTicker(label: "Exact unique", value: report.chunksAfterExactDedup)
@@ -83,11 +83,11 @@ struct DatasetDoctorView: View {
                 Label("Continue to training", systemImage: "arrow.right")
                     .font(Kiln.Font.body.weight(.semibold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, Kiln.Space.s)
+                    .padding(.horizontal, Kiln.Space.m)
                     .padding(.vertical, Kiln.Space.xs)
                     .background(
                         RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                            .fill(Kiln.Palette.accent)
+                            .fill(Kiln.Palette.firing)
                     )
             }
             .buttonStyle(.plain)

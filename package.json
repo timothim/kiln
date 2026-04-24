@@ -1,0 +1,18 @@
+{
+  "name": "kiln-design-tooling",
+  "private": true,
+  "description": "Design-system tooling for Kiln. Validates and exports /DESIGN.md. The app itself is macOS-native Swift — this package only exists to run the @google/design.md CLI.",
+  "scripts": {
+    "design:lint": "design.md lint DESIGN.md",
+    "design:export": "design.md export --format dtcg DESIGN.md"
+  },
+  "devDependencies": {
+    "@google/design.md": "0.1.1"
+  },
+  "overrides": {
+    "react": "19.2.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

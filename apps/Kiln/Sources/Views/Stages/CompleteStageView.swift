@@ -7,7 +7,7 @@ struct CompleteStageView: View {
     let project: Project
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             VStack(alignment: .leading, spacing: Kiln.Space.xs) {
                 HStack(spacing: Kiln.Space.xs) {
                     Image(systemName: "checkmark.seal.fill")
@@ -35,12 +35,12 @@ struct CompleteStageView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var statsRow: some View {
-        HStack(spacing: Kiln.Space.s) {
+        HStack(spacing: Kiln.Space.m) {
             Stat(label: "Model", value: "Qwen2.5-\(project.modelSize.displayName)")
             Stat(
                 label: "Chunks",
@@ -73,7 +73,7 @@ struct CompleteStageView: View {
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
         }
-        .padding(.horizontal, Kiln.Space.s)
+        .padding(.horizontal, Kiln.Space.m)
         .padding(.vertical, Kiln.Space.xs)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)

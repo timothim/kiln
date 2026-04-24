@@ -24,7 +24,7 @@ struct PrepareDetailView: View {
                 .fill(.thinMaterial)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: Kiln.Space.s) {
+            VStack(alignment: .leading, spacing: Kiln.Space.m) {
                 Text("Scanning")
                     .font(Kiln.Font.title)
                     .foregroundStyle(.primary)
@@ -42,7 +42,7 @@ struct PrepareDetailView: View {
 
                 Spacer()
             }
-            .padding(Kiln.Space.s)
+            .padding(Kiln.Space.m)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }

@@ -9,7 +9,7 @@ struct IngestProgressView: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: subtitle(for: model.currentStage),
@@ -31,15 +31,18 @@ struct IngestProgressView: View {
                     .accessibilityHint("Stops reading your folder")
             }
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var stageRow: some View {
         HStack(spacing: Kiln.Space.xs) {
+            // Ingest is reading, not firing — DESIGN.md §Don'ts line 240. The
+            // stage icon stays on the secondary tier; the progress bar below
+            // carries the single firing accent.
             Image(systemName: iconName(for: model.currentStage))
                 .font(Kiln.Font.caption)
-                .foregroundStyle(Kiln.Palette.accent)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(stageLabel(for: model.currentStage))
                 .font(Kiln.Font.caption)
@@ -53,7 +56,7 @@ struct IngestProgressView: View {
     }
 
     private var counterRow: some View {
-        HStack(alignment: .top, spacing: Kiln.Space.l) {
+        HStack(alignment: .top, spacing: Kiln.Space.xl) {
             LiveCountTicker(label: "Files read", value: model.counts.filesParsed)
             LiveCountTicker(label: "Samples kept", value: model.counts.chunksAfterQuality)
             LiveCountTicker(label: "Duplicates dropped", value: duplicatesDropped)

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Thin horizontal fill bar bound to the live stage fraction.
-/// Uses Kiln.Palette.accent over accentWash; width animates with Kiln.Motion.standard.
+/// Thin horizontal fill bar bound to the live stage fraction. Per DESIGN.md
+/// §components: track = `surface-sunken`, bar = `firing`. Width animates with
+/// Kiln.Motion.standard.
 struct StageProgressBar: View {
     let fraction: Double
     var height: CGFloat = 6
@@ -10,9 +11,9 @@ struct StageProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-                    .fill(Kiln.Palette.accentWash)
+                    .fill(Kiln.Palette.surfaceSunken)
                 RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-                    .fill(Kiln.Palette.accent)
+                    .fill(Kiln.Palette.firing)
                     .frame(width: clamped(geo.size.width))
                     .animation(Kiln.Motion.standard, value: clamped(geo.size.width))
             }

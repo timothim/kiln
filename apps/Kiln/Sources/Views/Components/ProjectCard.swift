@@ -8,7 +8,7 @@ struct ProjectCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Kiln.Space.xs) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 Text(project.name)
                     .font(Kiln.Font.body)
                     .foregroundStyle(.primary)

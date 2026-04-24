@@ -12,10 +12,10 @@ struct CompleteDetailView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Kiln.Space.s) {
+                VStack(alignment: .leading, spacing: Kiln.Space.m) {
                     SamplePreviewPanel()
                     Divider()
-                        .padding(.horizontal, Kiln.Space.s)
+                        .padding(.horizontal, Kiln.Space.m)
                     ChatPanel(project: project)
                 }
                 .padding(.vertical, Kiln.Space.xs)
