@@ -142,6 +142,87 @@ final class TrainIntegrationTests: XCTestCase {
         app.startTraining(projectID: project.id)
         XCTAssertNil(app.trainModel)
     }
+
+    // MARK: - M6: .sample events populate the GrowingModelPanel state
+
+    func test_sample_events_populate_growing_model_panel() async throws {
+        let datasetURL = tempDir.appendingPathComponent("train.jsonl")
+        FileManager.default.createFile(atPath: datasetURL.path, contents: Data("{}\n".utf8))
+        let adapterURL = tempDir.appendingPathComponent("adapters.safetensors")
+        FileManager.default.createFile(atPath: adapterURL.path, contents: Data())
+
+        // Build: ready → 5 progresses → round-1 samples (3) → 15 more progresses
+        // → round-2 samples (3, different completions) → unknown-id sample → done.
+        var events: [TrainingEvent] = [.ready(version: "0.1.0", mlx: "0.22.0")]
+        for iter in 1...5 {
+            events.append(.progress(TrainingProgress(
+                iter: iter,
+                loss: 1.5 - 0.05 * Double(iter),
+                tokensPerSec: 900
+            )))
+        }
+        events.append(.sample(TrainingSample(iter: 10, promptID: "week_focus",     completion: "Draft 1: focus.")))
+        events.append(.sample(TrainingSample(iter: 10, promptID: "birthday_msg",   completion: "Draft 1: birthday.")))
+        events.append(.sample(TrainingSample(iter: 10, promptID: "perfect_sunday", completion: "Draft 1: sunday.")))
+        for iter in 6...20 {
+            events.append(.progress(TrainingProgress(
+                iter: iter,
+                loss: 1.2 - 0.02 * Double(iter),
+                tokensPerSec: 900
+            )))
+        }
+        events.append(.sample(TrainingSample(iter: 20, promptID: "week_focus",     completion: "Ship the thing.")))
+        events.append(.sample(TrainingSample(iter: 20, promptID: "birthday_msg",   completion: "Happy birthday.")))
+        events.append(.sample(TrainingSample(iter: 20, promptID: "perfect_sunday", completion: "Coffee, walk, nap.")))
+        events.append(.sample(TrainingSample(iter: 20, promptID: "unknown_id",     completion: "ignored")))
+        events.append(.done(artifact: adapterURL, interrupted: false))
+
+        let runner = FakeTrainingRunner(events: events)
+        let app = AppModel(trainingRunnerFactory: { runner })
+
+        var project = Project(name: "GrowingModel", stage: .training)
+        project.preparedDatasetURL = datasetURL
+        app.projects = [project]
+        app.selectedProjectID = project.id
+
+        app.startTraining(projectID: project.id)
+        guard let trainModel = app.trainModel else {
+            return XCTFail("AppModel did not create a TrainModel")
+        }
+        await waitForStatus(trainModel) { status in
+            if case .completed = status { return true }
+            return false
+        }
+
+        // Seeded three prompt cards.
+        XCTAssertEqual(trainModel.growingModelSamples.count, 3)
+
+        // Latest-wins aggregation — round-2 completions visible.
+        let index = Dictionary(uniqueKeysWithValues:
+            GrowingModelPrompts.defaults.enumerated().map { ($0.element.id, $0.offset) })
+        if let weekIdx = index["week_focus"] {
+            XCTAssertEqual(trainModel.growingModelSamples[weekIdx].currentResponse, "Ship the thing.")
+        } else {
+            XCTFail("week_focus missing from prompt index")
+        }
+        if let bdayIdx = index["birthday_msg"] {
+            XCTAssertEqual(trainModel.growingModelSamples[bdayIdx].currentResponse, "Happy birthday.")
+        } else {
+            XCTFail("birthday_msg missing from prompt index")
+        }
+        if let sunIdx = index["perfect_sunday"] {
+            XCTAssertEqual(trainModel.growingModelSamples[sunIdx].currentResponse, "Coffee, walk, nap.")
+        } else {
+            XCTFail("perfect_sunday missing from prompt index")
+        }
+
+        // Final state reached .completed.
+        XCTAssertEqual(trainModel.growingModelState, .completed)
+
+        // Unknown promptID was tolerated — no extra row, no crash, none of the
+        // three cards' responses equal "ignored".
+        XCTAssertFalse(trainModel.growingModelSamples.contains { $0.currentResponse == "ignored" })
+    }
 }
 
 /// Minimal TrainingRunner that replays a pre-baked event array over an

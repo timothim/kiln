@@ -131,7 +131,7 @@ private struct TrainingEmptyView: View {
 
 private struct TrainingRunningView: View {
     let project: Project
-    let model: TrainModel
+    @Bindable var model: TrainModel
     let onCancel: () -> Void
 
     var body: some View {
@@ -165,10 +165,15 @@ private struct TrainingRunningView: View {
                 .padding(.top, Kiln.Space.xs)
             }
 
-            Text(preamble)
-                .font(Kiln.Font.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, Kiln.Space.xs)
+            GrowingModelPanelView(
+                samples: $model.growingModelSamples,
+                state: model.growingModelState,
+                currentStep: model.currentProgress?.iter ?? 0,
+                currentEpoch: model.currentEpoch,
+                totalEpochs: model.totalEpochs,
+                nextUpdateSeconds: 0
+            )
+            .frame(maxWidth: 640)
 
             Spacer(minLength: 0)
 
@@ -188,13 +193,6 @@ private struct TrainingRunningView: View {
             return "Warming up. Loss numbers appear shortly."
         }
         return "Teaching your model."
-    }
-
-    private var preamble: String {
-        if model.lastCheckpoint != nil {
-            return "Your model will start speaking after the next checkpoint."
-        }
-        return "Your model will start speaking at the first checkpoint."
     }
 
     private var fractionComplete: Double {
