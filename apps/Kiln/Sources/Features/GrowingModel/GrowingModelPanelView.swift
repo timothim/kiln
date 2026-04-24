@@ -64,12 +64,7 @@ struct GrowingModelPanelView: View {
             }
 
             if state == .completed {
-                Text("Congrats — your model has found its voice.")
-                    .font(Kiln.Font.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, Kiln.Space.xs)
-                    .transition(.opacity)
+                completionBanner
             }
 
             Spacer(minLength: 0)
@@ -91,6 +86,31 @@ struct GrowingModelPanelView: View {
                     .animation(Kiln.Motion.standard, value: currentStep)
             }
         }
+    }
+
+    // Firing-moment completion banner. Stylization done = emotional payoff of
+    // M6; the caption-weight version read undersold. Amber is sanctioned here
+    // per DESIGN.md (firing moment, same family as TrainingProgressCapsule).
+    private var completionBanner: some View {
+        HStack(spacing: Kiln.Space.xs) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: Kiln.Icon.small))
+                .foregroundStyle(Kiln.Palette.firing)
+            Text("Congrats — your model has found its voice.")
+                .font(Kiln.Font.body.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, Kiln.Space.m)
+        .padding(.vertical, Kiln.Space.xs)
+        .frame(maxWidth: .infinity)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Kiln.Palette.firingWash)
+        }
+        .padding(.top, Kiln.Space.xs)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
