@@ -1,0 +1,30 @@
+{
+  "component": "preference-judge",
+  "run_type": "full-run",
+  "opus_model": "claude-opus-4-7",
+  "started_at": "2026-04-24T20:00:42Z",
+  "finished_at": "2026-04-24T20:40:16Z",
+  "input_count": 2000,
+  "labels_written": 2000,
+  "skipped_count": 0,
+  "winner_distribution": {
+    "A": 1024,
+    "B": 976,
+    "tie": 0
+  },
+  "position_bias_check": {
+    "note": "Balanced input: first half voice-bearing in A, second half voice-bearing in B. Expect roughly equal A/B counts if no bias.",
+    "a_rate": 0.512,
+    "b_rate": 0.488,
+    "tie_rate": 0.0
+  },
+  "aborted": false,
+  "recovered_via": "session files (GET /v1/files)",
+  "recovered_at": "2026-04-24T20:42:56Z",
+  "recovery_source": {
+    "session_id": "sesn_011CaPC13aAYXFuqXdFT78vp",
+    "labels_file_id": "file_011CaPF3xuZCLKEgFhmXx6qz",
+    "labels_size_bytes": 280537,
+    "manifest_file_id": "file_011CaPF3xq6a6Hm1bFfqNjaS"
+  }
+}
