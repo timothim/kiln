@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Deploy the Kiln Distillation Orchestrator agent + environment.
+"""Deploy a Kiln managed-agent + environment (corpus-builder or preference-judge).
 
 Assembles the agent config (merging system-prompt.txt into agent.json),
 POSTs /v1/agents and /v1/environments, and writes the resulting IDs
-to /tmp/kiln-distill.env for shell sourcing.
+to /tmp/kiln-distill.env (or $EXPORT_ENV) for shell sourcing.
 
 Idempotency: re-running creates a new version of each; the caller can
 pin to a specific version via the exported IDs if needed.
+
+Usage:
+  python scripts/managed-agents/deploy.py                            # default: corpus-builder
+  python scripts/managed-agents/deploy.py --agent-dir managed-agents/preference-judge
+  AGENT_DIR=managed-agents/preference-judge python scripts/managed-agents/deploy.py
+  EXPORT_ENV=/tmp/kiln-preference.env python scripts/managed-agents/deploy.py --agent-dir managed-agents/preference-judge
 """
+import argparse
 import json
 import os
 import pathlib
@@ -16,7 +23,7 @@ import urllib.error
 import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-AGENT_DIR = REPO / "managed-agents" / "corpus-builder"
+DEFAULT_AGENT_DIR = REPO / "managed-agents" / "corpus-builder"
 OUT_ENV = pathlib.Path(os.environ.get("EXPORT_ENV", "/tmp/kiln-distill.env"))
 
 API_BASE = "https://api.anthropic.com"
@@ -50,12 +57,35 @@ def post(path: str, body: dict, api_key: str) -> dict:
         sys.exit(f"POST {path} failed: {e.code} {e.reason}\n{body}")
 
 
-def main() -> None:
-    api_key = _require_api_key()
+def _resolve_agent_dir(cli_value: str | None) -> pathlib.Path:
+    """CLI arg > env var > default. Accept relative paths (resolved against REPO) or absolute."""
+    raw = cli_value or os.environ.get("AGENT_DIR")
+    if not raw:
+        return DEFAULT_AGENT_DIR
+    p = pathlib.Path(raw)
+    if not p.is_absolute():
+        p = REPO / p
+    if not p.is_dir():
+        sys.exit(f"agent dir not found: {p}")
+    return p
 
-    agent = json.loads((AGENT_DIR / "agent.json").read_text())
-    agent["system"] = (AGENT_DIR / "system-prompt.txt").read_text()
-    env = json.loads((AGENT_DIR / "environment.json").read_text())
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--agent-dir",
+        default=None,
+        help="path to managed-agents/<component>/ (default: corpus-builder; or set $AGENT_DIR)",
+    )
+    args = ap.parse_args()
+
+    api_key = _require_api_key()
+    agent_dir = _resolve_agent_dir(args.agent_dir)
+    print(f"-> using agent dir: {agent_dir.relative_to(REPO)}")
+
+    agent = json.loads((agent_dir / "agent.json").read_text())
+    agent["system"] = (agent_dir / "system-prompt.txt").read_text()
+    env = json.loads((agent_dir / "environment.json").read_text())
 
     print(f"-> POST /v1/agents  name={agent['name']} model={agent['model']}")
     agent_resp = post("/v1/agents", agent, api_key)

@@ -1,0 +1,14 @@
+{
+  "name": "kiln-style-extractor-orchestrator",
+  "model": "claude-opus-4-7",
+  "description": "Opus-as-teacher labeler for Kiln's style-extractor distillation. The agent itself (Opus 4.7) extracts 6-axis style descriptors, distinctive n-grams, and a short markdown style card per text snippet, writes output to the container, and emits the labeled JSONL back to the caller via an agent message. Pilot: 300 samples.",
+  "tools": [
+    {"type": "agent_toolset_20260401"}
+  ],
+  "metadata": {
+    "project": "kiln",
+    "component": "style-extractor",
+    "run_type": "pilot",
+    "owner": "timtvn"
+  }
+}

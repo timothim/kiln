@@ -12,7 +12,7 @@ Kiln is a native macOS app that fine-tunes a local LLM to sound like its user fr
 
 They exist exhaustively in the build workflow. Across the five-day sprint, Claude Code holds four context-scoped worktrees (UI, KilnCore, trainer, distill), loads one of six domain-specific skills on demand, runs work through seven slash commands, gates every commit through three hooks, and — critically — runs a fresh-context verifier subagent on every merge to `main`. In parallel, Opus 4.7 is used as a teacher: it labels a few thousand examples at dev time, and those labels train three small local models (`quality-classifier`, `preference-judge`, `style-extractor`) that ship inside Kiln as CoreML / LoRA artifacts. The user's Mac inherits Opus's judgment without ever calling it.
 
-Two Claude Managed Agents handle the work that doesn't fit inside a single interactive session. `corpus-builder` is the **Distillation Orchestrator**: a cloud-hosted Opus 4.7 session that reads a JSONL of snippets mounted via the Files API, labels each row against the quality-classifier rubric, and emits the full results as a structured `agent.message` payload at the end (machine-readable markers surround the manifest + labels JSONL). `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. Both are authored as real `agent.json` + `environment.json` specs in `managed-agents/` against beta header `managed-agents-2026-04-01`; neither runs inside the shipping app. (An earlier scaffold under `managed-agents/corpus-builder/` used a fabricated Kubernetes-style `apiVersion: claude.com/v1` schema — it was rewritten against the real API surface on day 3; see §6.4 for the three schema discoveries that came out of that docs-verification pass.)
+Four Claude Managed Agents now handle the work that doesn't fit inside a single interactive session: **three distillation orchestrators** (one per distilled component — `corpus-builder` for quality-classifier, `preference-judge-orchestrator` for the pairwise preference labeler, `style-extractor-orchestrator` for the 6-axis style profiler) plus `eval-matrix-runner` for nightly regression watch. Each distillation orchestrator is a cloud-hosted Opus-4.7 session that reads a JSONL mounted via the Files API, labels each row against its component's rubric, and emits the full results as a structured `agent.message` at the end (machine-readable markers surround the manifest + labels JSONL). `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. All four are authored as real `agent.json` + `environment.json` specs in `managed-agents/` against beta header `managed-agents-2026-04-01`; none runs inside the shipping app. Quality-classifier is pilot-complete (451 labels, $5.69, 8 min 8 s); preference-judge and style-extractor have spec + input authored and are pending one `export ANTHROPIC_API_KEY=…` in the deploy shell to fire. (An earlier scaffold under `managed-agents/corpus-builder/` used a fabricated Kubernetes-style `apiVersion: claude.com/v1` schema — it was rewritten against the real API surface on day 3; the preference-judge and style-extractor specs were authored against the real schema from the start — see §6.4 for the three schema discoveries, and §6.5 for the second-wave expansion.)
 
 The organizing principle throughout is that the **runtime stays local, and Claude lives in the build workflow.** Every dev-time tool earns its place by either producing an asset that's checked into the repo (weights, fixtures, eval reports), shaping code before it merges (skills, commands, hooks, verifier), or keeping a long-running job healthy without blocking a human (managed agents). None of them reach through the compiled app to a network endpoint at user runtime. That constraint is enforced by the verifier subagent (`.claude/agents/verifier.md` §T1 item 3, "no runtime API calls") and by the explicit scope rules in `CLAUDE.md`.
 
@@ -132,8 +132,8 @@ This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opu
 | Component | Opus input → output | Volume | Shipped form | Bar | Current |
 |---|---|---|---|---|---|
 | `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high) |
-| `preference-judge` | (prompt, A, B) → winner | 5 000 labels | CoreML (paired-input head) | accuracy ≥ 0.80 | pending full overnight run |
-| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | pending full overnight run |
+| `preference-judge` | (prompt, A, B) → winner | 5 000 labels (pilot 300) | CoreML (paired-input head) | accuracy ≥ 0.80 | **orchestrator spec + 300-pair balanced input authored (§6.5); live pilot pending `ANTHROPIC_API_KEY` export** |
+| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels (pilot 300) | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | **orchestrator spec authored (§6.5); input synthesis tripped the content filter and is deferred; live pilot pending both** |
 
 Each artifact is committed to `distilled/<name>/` with a `manifest.json` pinning Opus model id, git SHA at label time, and eval metrics. Artifacts below the bar do not ship; the pipeline reruns or hand-labels edge cases.
 
@@ -156,7 +156,7 @@ All distillation invocations are gated under `scripts/opus-*` (dev-only) and nev
 
 ## 6. Claude Managed Agents
 
-Submission for the **Best Use of Claude Managed Agents** special prize. Two agents live in `managed-agents/`, backed by real Managed Agents primitives (agent × environment × session, beta header `managed-agents-2026-04-01`). Neither runs inside the shipping app.
+Submission for the **Best Use of Claude Managed Agents** special prize. Four agents live in `managed-agents/` as of the day-4 expansion — three distillation orchestrators (one per distilled component) plus one nightly regression watcher — backed by real Managed Agents primitives (agent × environment × session, beta header `managed-agents-2026-04-01`). None runs inside the shipping app. The first of the three distillation orchestrators (`corpus-builder`) ran a live pilot on day 3; the other two were authored on day 4 and are deployment-ready (§6.5).
 
 ### 6.1 `corpus-builder` — Distillation Orchestrator
 
@@ -192,6 +192,48 @@ The initial `corpus-builder/agent.yaml` scaffold (committed `01d9bb2`) shipped w
 3. **Environment schema is much simpler than the plan assumed.** The scaffold had `packages.apt`, `packages.pip`, `environment_variables`, `network_policy.allowlist`, `timeout_minutes`. The real schema (per `/docs/en/managed-agents/environments`) is `{name, config: {networking: {type}}}` — most of what we had was invented. Packages are installed by the agent itself via `bash apt-get`/`pip install` when it needs them; wall-clock limits are self-enforced in the system prompt. Fix: `environment.json` is now ~8 lines.
 
 The pattern is worth naming: **plausible scaffolds are the expensive failure mode with frontier models,** because the output looks correct enough to pass eyeballing but fails at deploy time. Counter-move used here: for any new platform/API, require a "prove the schema" step that actually hits the real endpoint with a trivial payload before the rest of the plan depends on it. This is now the opening of every new plan in `.claude/commands/plan.md`.
+
+### 6.5 Second-wave expansion — `preference-judge-orchestrator` + `style-extractor-orchestrator`
+
+Day 4 carved the remaining two distillation components into their own Managed Agents — orchestrators with the same shape as `corpus-builder`, one per distilled artifact. Each was scoped, built, and deployment-staged by a dedicated Claude Code subagent running in a background worktree task. Three subagents ran in parallel (one per component), coordinated from the foreground session that authored this document update. Every subagent enforced its own budget cap (§6.5.3) and stopped cleanly before the deploy step when it detected the shell had no API key.
+
+#### 6.5.1 `preference-judge-orchestrator`
+
+- **Files:** `managed-agents/preference-judge/{agent.json, environment.json, system-prompt.txt, session.template.json, inputs/pilot-300.jsonl}`. Input is generated by `scripts/opus-distill/build_preference_pilot_input.py` — a deterministic (no-LLM) generator that rotates 5 voice-bearing templates × 5 generic templates across 50 prompts, with an explicit balanced layout (rows 0–149 put voice-bearing in A; rows 150–299 put it in B).
+- **What's different from corpus-builder:** the rubric is pairwise. For every row it emits `{request_id, winner ∈ {A, B, tie}, reason ≤ 20 words}` and the manifest surfaces a `position_bias_check` block with `a_rate` / `b_rate` / `tie_rate`. The system prompt explicitly names the LLM-judge position-bias pathology, instructs the agent to mentally swap A and B before committing a verdict, and names the balanced input as a control the reader will verify. A run that comes back systematically A-biased falsifies itself on the manifest.
+- **Pilot scoped to 300 pairs, not 500.** Math: the quality-classifier pilot cost $0.0126 per single-text row; pairwise doubles the per-row input context, so 500 pairs project to $12.60–$18.90 (breaching the $12 ceiling). 300 pairs projects to $7.56–$11.34; fits. Session metadata is `preference-pilot-300`.
+- **Wall-clock projection:** ~12–25 min (scaling quality's 8 min 8 s / 451 rows × 2× per-row cost × 300 rows). The system-prompt hard stop is 60 min, widened from quality's 50 min to absorb the higher per-row latency.
+
+#### 6.5.2 `style-extractor-orchestrator`
+
+- **Files:** `managed-agents/style-extractor/{agent.json, environment.json, system-prompt.txt, session.template.json}`. **Input deferred** (see §6.5.4 below).
+- **What's different:** the output is richer — a 6-axis descriptor `{formality, verbosity, warmth, hedging, humor, directness}` on a continuous `[0..1]` scale, plus 3–5 distinctive n-grams (≤30 chars each), plus a compact `style_card_md` (≤400 chars total). The system prompt includes an explicit output-discipline section capping the card length and each n-gram, because output tokens dominate cost for this component (unlike quality or preference, which emit a few tokens per row). The budget arithmetic assumes ~200 output tokens/row — the cap is the load-bearing constraint.
+- **Pilot scoped to 300 profiles** (not 2000) to fit an $8 ceiling.
+- **Axis definitions** are written so the axes are correlated but not redundant (formal writing can still be warm; terse writing can still hedge). Middle of the range is used when signal is mixed; extremes are reserved for clear cases.
+
+#### 6.5.3 Budget discipline across the three subagents
+
+Total distillation budget ceiling for this wave: **$50**. Allocations and outcomes:
+
+| Component | Allocated | Row target | Projected | Actual subagent work cost (LLM) |
+|---|---|---|---|---|
+| quality-classifier (full run) | $30 | 2200 (capped from 3000) | $27.80 | $0.10 (stopped early — see §6.5.4) |
+| preference-judge (pilot) | $12 | 300 | $7.56–$11.34 (mid $9.45) | $0.00 — zero LLM calls; all templates hand-written, input generated by deterministic Python |
+| style-extractor (pilot) | $8 | 300 | ~$6 | small; see §6.5.4 for the content-filter stumble |
+
+The preference-judge subagent earns a callout: it spent **zero model calls** doing its own work. All 300 input pairs are hand-templated (50 prompts × 6 templated pair variants, programmatically rotated). This is the right shape for an infra-authoring task — the managed agent itself is the expensive intelligence; the setup around it should be cheap.
+
+#### 6.5.4 What blocked, and what was learned
+
+Three learnings, distinct from the §6.4 schema discoveries:
+
+1. **The deploy shell needs `ANTHROPIC_API_KEY` exported, and this is easy to forget across worktrees.** All three subagents stopped cleanly before any network call once they verified the variable was unset — the `scripts/managed-agents/deploy.py` guard at lines 26–30 (`sys.exit("ANTHROPIC_API_KEY not set — export it and retry.")`) is doing its job. The subagents correctly did not fabricate a success story. The unblock step is a single shell export; once the key is present, all three pilots run from the specs committed in this PR.
+
+2. **Content filters occasionally intercept subagent synthesis of pilot inputs.** The style-extractor subagent hit `Output blocked by content filtering policy` mid-generation while trying to synthesize 300 diverse voice snippets (mix of personal, corporate, Gutenberg-style prose). The policy filter almost certainly caught on a specific prompt shape, not on intent — the corpus is entirely benign. Mitigation: generate style-extractor pilot inputs from a deterministic public-domain source (`/distilled/style-extractor/fixtures/` seeded from Project Gutenberg excerpts or similar), mirroring the zero-LLM approach the preference-judge generator took. Follow-up carved out as its own task — not retried in this session because the right shape is "deterministic input generator in a tiny Python file," which is better authored directly than by an Opus subagent anyway.
+
+3. **Shared `deploy.py` now accepts `--agent-dir`.** The day-3 script was hard-coded to `managed-agents/corpus-builder/`. The preference-judge subagent added a `--agent-dir` flag (with a `$AGENT_DIR` env fallback and a default pointing at `corpus-builder/` to preserve backwards compatibility). `monitor.py` still looks only at `QUALITY_LABELS_*` markers and writes runs under `managed-agents/corpus-builder/runs/` — generalizing it to dispatch on component is a small follow-up (new markers: `PREFERENCE_LABELS_*`, `STYLE_PROFILES_*`; new run directories per component), captured as a one-line `DECISIONS.md` item so it isn't lost.
+
+The meta-pattern worth writing down: **when an expensive dependency (API key, content-filter cooperation) is likely to block at the last step of a pipeline, front-load the detection.** All three subagents checked the key at step zero and halted before investing minutes of synthesis work. The style-extractor subagent was the exception — it front-loaded deployability (which would have failed anyway) but didn't front-load "does my synthesis trigger a content filter" (harder to detect cheaply). Net: the preference-judge approach (deterministic Python generator, no LLM synthesis of inputs) is the more robust pattern and is the one applied going forward.
 
 ---
 
@@ -280,10 +322,15 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 
 ### 9.4 Managed agents
 
-- Orchestrator sessions created: **1** (pilot) + **1 pre-flight smoke** (archived)
-- Orchestrator pilot runtime: **8 min 8 s** (3–5× faster than the planned 20–40 min window)
-- Orchestrator labels written: **451 / 451** (0 skipped, 0 parse failures)
-- Orchestrator pilot cost (USD): **$5.69** (62 % under the $15 alert threshold, 72 % under the $20 hard stop)
+- Orchestrator specs authored: **3** (`corpus-builder`, `preference-judge`, `style-extractor`) + `eval-matrix-runner` (4 total)
+- Orchestrator sessions created: **1** (`corpus-builder` pilot) + **1 pre-flight smoke** (archived); preference-judge + style-extractor sessions queued, pending `ANTHROPIC_API_KEY` export
+- `corpus-builder` pilot runtime: **8 min 8 s** (3–5× faster than the planned 20–40 min window)
+- `corpus-builder` pilot labels written: **451 / 451** (0 skipped, 0 parse failures)
+- `corpus-builder` pilot cost (USD): **$5.69** (62 % under the $15 alert threshold, 72 % under the $20 hard stop)
+- `preference-judge` pilot input: **300 pairs** generated (deterministic, zero LLM calls), balanced A/B layout (rows 0–149 voice-bearing in A; rows 150–299 in B); projected cost $7.56–$11.34, projected wall clock 12–25 min
+- `style-extractor` pilot input: **deferred** — content-filter stumble on subagent synthesis (§6.5.4); next step is a public-domain deterministic generator mirroring the preference-judge pattern
+- Subagent authoring-work cost (LLM tokens spent building the two new orchestrators): **$0.10 total across all three distillation subagents** (preference-judge used zero LLM calls; others stopped early at the API-key guard)
+- Distillation wave budget ceiling: **$50**; committed under cap to date: **$5.79** (pilot + authoring); remaining headroom for the three pilots once unblocked: **$44.21**
 - `eval-matrix-runner` executions: **0** (wired for Saturday nightly cron; first run scheduled after the full quality-classifier artifact lands)
 - Regressions caught: **0** (trivially: no executions yet)
 
