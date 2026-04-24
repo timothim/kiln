@@ -1,0 +1,22 @@
+{
+  "component": "preference-judge",
+  "run_type": "pilot",
+  "opus_model": "claude-opus-4-7",
+  "started_at": "2026-04-24T12:12:50Z",
+  "finished_at": "2026-04-24T12:16:33Z",
+  "input_count": 300,
+  "labels_written": 300,
+  "skipped_count": 0,
+  "winner_distribution": {
+    "A": 150,
+    "B": 150,
+    "tie": 0
+  },
+  "position_bias_check": {
+    "note": "Balanced input: first half voice-bearing in A, second half voice-bearing in B. Expect roughly equal A/B counts if no bias.",
+    "a_rate": 0.5,
+    "b_rate": 0.5,
+    "tie_rate": 0.0
+  },
+  "aborted": false
+}

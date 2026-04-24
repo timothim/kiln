@@ -36,7 +36,29 @@ OPUS_IN_PER_M = 15.0
 OPUS_OUT_PER_M = 75.0
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-RUNS_DIR = REPO / "managed-agents" / "corpus-builder" / "runs"
+
+# Per-component extraction settings: where runs/ lives, which markers bracket
+# the payload, and the output filename inside runs/<ISO>/.
+COMPONENT_SETTINGS: dict[str, dict[str, str]] = {
+    "corpus-builder": {
+        "runs_dir": "managed-agents/corpus-builder/runs",
+        "begin": "QUALITY_LABELS_BEGIN",
+        "end": "QUALITY_LABELS_END",
+        "filename": "quality-labels.jsonl",
+    },
+    "preference-judge": {
+        "runs_dir": "managed-agents/preference-judge/runs",
+        "begin": "PREFERENCE_LABELS_BEGIN",
+        "end": "PREFERENCE_LABELS_END",
+        "filename": "preference-labels.jsonl",
+    },
+    "style-extractor": {
+        "runs_dir": "managed-agents/style-extractor/runs",
+        "begin": "STYLE_PROFILES_BEGIN",
+        "end": "STYLE_PROFILES_END",
+        "filename": "style-profiles.jsonl",
+    },
+}
 
 
 def fetch(url: str) -> dict:
@@ -81,18 +103,21 @@ def between(text: str, begin: str, end: str) -> str | None:
     return text[i + len(begin) : j].strip()
 
 
-def write_extract(final_text: str) -> pathlib.Path:
+def write_extract(final_text: str, component: str) -> pathlib.Path:
+    cfg = COMPONENT_SETTINGS[component]
     manifest_raw = between(final_text, "RUN_MANIFEST_BEGIN", "RUN_MANIFEST_END")
-    labels_raw = between(final_text, "QUALITY_LABELS_BEGIN", "QUALITY_LABELS_END")
+    labels_raw = between(final_text, cfg["begin"], cfg["end"])
     if manifest_raw is None or labels_raw is None:
-        sys.exit("Could not locate RUN_MANIFEST_* or QUALITY_LABELS_* markers in final message.")
+        sys.exit(
+            f"Could not locate RUN_MANIFEST_* or {cfg['begin']}/{cfg['end']} markers in final message."
+        )
     iso = _dt.datetime.now(_dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    out = RUNS_DIR / iso
+    out = REPO / cfg["runs_dir"] / iso
     out.mkdir(parents=True, exist_ok=True)
     (out / "run_manifest.json").write_text(manifest_raw + "\n")
-    (out / "quality-labels.jsonl").write_text(labels_raw + "\n")
+    (out / cfg["filename"]).write_text(labels_raw + "\n")
     print(f"-> wrote {out}/run_manifest.json")
-    print(f"-> wrote {out}/quality-labels.jsonl")
+    print(f"-> wrote {out}/{cfg['filename']}")
     return out
 
 
@@ -102,6 +127,12 @@ def main() -> None:
     ap.add_argument("--summary", action="store_true", help="single pass then exit")
     ap.add_argument("--extract", action="store_true", help="after RUN_COMPLETE, write runs/<ISO>/ locally")
     ap.add_argument("--interval", type=int, default=15)
+    ap.add_argument(
+        "--component",
+        default="corpus-builder",
+        choices=list(COMPONENT_SETTINGS.keys()),
+        help="which distilled component's marker shape + runs dir to use (default: corpus-builder)",
+    )
     args = ap.parse_args()
 
     sid = args.session_id
@@ -110,7 +141,7 @@ def main() -> None:
 
     tokens_in = 0
     tokens_out = 0
-    last_seen = 0
+    seen_seqs: set[int] = set()
     progress_count = 0
     final_text = ""
     run_complete = False
@@ -119,14 +150,13 @@ def main() -> None:
     start = time.time()
 
     while True:
-        url = f"{API_BASE}/v1/sessions/{sid}/events?limit=200"
-        if last_seen:
-            url += f"&after={last_seen}"
-        events = fetch(url)
+        events = fetch(f"{API_BASE}/v1/sessions/{sid}/events?limit=200&order=asc")
         for e in events.get("data", []):
             seq = e.get("sequence_number")
+            if seq in seen_seqs:
+                continue
             if seq is not None:
-                last_seen = seq
+                seen_seqs.add(seq)
             t = e.get("type", "")
             if t == "span.model_request_end":
                 usage = (e.get("model_usage") or {})
@@ -173,13 +203,14 @@ def main() -> None:
     )
 
     if args.extract and run_complete:
-        write_extract(final_text)
+        write_extract(final_text, args.component)
     elif args.extract and run_aborted:
         print("-> run aborted; writing manifest only")
         manifest_raw = between(final_text, "RUN_MANIFEST_BEGIN", "RUN_MANIFEST_END")
         if manifest_raw is not None:
+            cfg = COMPONENT_SETTINGS[args.component]
             iso = _dt.datetime.now(_dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-            out = RUNS_DIR / f"{iso}_aborted"
+            out = REPO / cfg["runs_dir"] / f"{iso}_aborted"
             out.mkdir(parents=True, exist_ok=True)
             (out / "run_manifest.json").write_text(manifest_raw + "\n")
             print(f"-> wrote {out}/run_manifest.json")

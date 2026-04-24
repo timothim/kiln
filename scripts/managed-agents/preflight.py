@@ -69,13 +69,12 @@ def main() -> None:
     sid = sesn["id"]
     print(f"  session_id={sid}")
 
+    mount = "/mnt/session/uploads/workspace/input.jsonl"
     prompt_text = (
-        "Preflight. Do these three checks and report PREFLIGHT_OK on a single line if all pass, "
+        "Preflight. Do these two checks and report PREFLIGHT_OK on a single line if both pass, "
         "or PREFLIGHT_FAIL step <N> <reason> if any fails. Do not print secrets.\n"
-        "1) bash: test -f /workspace/input.jsonl && head -1 /workspace/input.jsonl | head -c 200\n"
-        "2) bash: wc -l /workspace/input.jsonl\n"
-        "3) Confirm the mounted file is read-only by attempting: bash: touch /workspace/input.jsonl "
-        "(expected: permission denied — report that as 'step 3 ok: read-only confirmed')."
+        f"1) bash: test -f {mount} && head -1 {mount} | head -c 200\n"
+        f"2) bash: wc -l {mount}"
     )
 
     print("-> sending preflight message...")
@@ -95,14 +94,16 @@ def main() -> None:
     print("-> polling for completion (up to 180s)...")
     deadline = time.time() + 180
     final_text = ""
-    last_seen = 0
+    seen_seqs: set[int] = set()
     done = False
     while time.time() < deadline and not done:
-        events = request("GET", f"/v1/sessions/{sid}/events?limit=50&after={last_seen}")
+        events = request("GET", f"/v1/sessions/{sid}/events?limit=200&order=asc")
         for e in events.get("data", []):
             seq = e.get("sequence_number")
+            if seq in seen_seqs:
+                continue
             if seq is not None:
-                last_seen = seq
+                seen_seqs.add(seq)
             if e.get("type") == "agent.message":
                 content = e.get("content", [])
                 if isinstance(content, list):

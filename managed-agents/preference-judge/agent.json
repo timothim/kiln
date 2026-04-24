@@ -1,0 +1,14 @@
+{
+  "name": "kiln-preference-judge-orchestrator",
+  "model": "claude-opus-4-7",
+  "description": "Opus-as-teacher pairwise preference labeler for Kiln's preference-judge distillation. The agent itself (Opus 4.7) judges which of two completions (A vs B) better matches a user's writing voice, writes output to the container, and emits the labeled JSONL back to the caller via an agent message. Pilot: 500 pairs; full run: 5,000.",
+  "tools": [
+    {"type": "agent_toolset_20260401"}
+  ],
+  "metadata": {
+    "project": "kiln",
+    "component": "preference-judge",
+    "run_type": "pilot",
+    "owner": "timtvn"
+  }
+}

@@ -64,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_train_parser(sub)
     _build_sample_parser(sub)
+    _build_sample_batch_parser(sub)
     _build_export_parser(sub)
 
     return parser
@@ -92,6 +93,10 @@ def _build_train_parser(sub: argparse._SubParsersAction) -> None:
     # Hidden test seam: lets tests point at tests/fixtures/fake_trainer.py.
     p.add_argument("--trainer-module", default="mlx_lm.lora", help=argparse.SUPPRESS)
     p.add_argument("--trainer-entry", default=None, help=argparse.SUPPRESS)
+    # Hidden test seam for the post-checkpoint sampler (M6.5). Threads through
+    # to the spawned ``sample-batch`` subprocess so integration tests can swap
+    # in ``tests/fixtures/fake_batch_generator.py``.
+    p.add_argument("--sampler-entry", default=None, help=argparse.SUPPRESS)
 
 
 def _build_sample_parser(sub: argparse._SubParsersAction) -> None:
@@ -110,6 +115,36 @@ def _build_sample_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--seed", type=int, default=42)
     # Hidden test seam.
     p.add_argument("--generator-module", default="mlx_lm.generate", help=argparse.SUPPRESS)
+    p.add_argument("--generator-entry", default=None, help=argparse.SUPPRESS)
+
+
+def _build_sample_batch_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "sample-batch",
+        help="batched inference for Growing Model samples at each checkpoint",
+        description=(
+            "Run inference against N fixed prompts on a trained adapter, loading "
+            "the model once. Emits one generation event per prompt plus a final "
+            "done(stage=generation). Invoked by the train orchestrator after each "
+            "checkpoint save (M6.5)."
+        ),
+    )
+    p.add_argument("--model", required=True)
+    p.add_argument("--adapter-path", type=Path, required=True)
+    p.add_argument(
+        "--prompts-file",
+        type=Path,
+        default=None,
+        help=(
+            "JSON list of {id, text} prompt entries. Defaults to "
+            "kiln_trainer.sample_prompts.DEFAULT_PROMPTS when omitted."
+        ),
+    )
+    p.add_argument("--max-tokens", type=int, default=150)
+    p.add_argument("--temp", type=float, default=0.7)
+    p.add_argument("--top-p", type=float, default=0.9)
+    p.add_argument("--seed", type=int, default=42)
+    # Hidden test seam.
     p.add_argument("--generator-entry", default=None, help=argparse.SUPPRESS)
 
 
@@ -157,6 +192,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import sample as sample_cmd
 
         return sample_cmd.run(args)
+    if args.command == "sample-batch":
+        from kiln_trainer.commands import sample_batch as sample_batch_cmd
+
+        return sample_batch_cmd.run(args)
     if args.command == "export":
         from kiln_trainer.commands import export as export_cmd
 
