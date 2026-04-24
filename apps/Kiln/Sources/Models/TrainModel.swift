@@ -82,6 +82,15 @@ final class TrainModel {
     var totalIters: Int?
     var sidecarVersion: String?
 
+    /// Three fixed Growing-Model prompt cards. Seeded in prepareForStart,
+    /// updated as `.sample` events arrive, cleared by reset. Always length 3
+    /// while training; empty at rest.
+    var growingModelSamples: [PromptSample] = []
+
+    /// Captured from request.hyperparameters at start — used by the panel
+    /// header to render "Step N · Epoch E of T".
+    var totalEpochs: Int = 1
+
     // Private state.
     private var task: Task<Void, Never>?
     private var request: TrainingRequest?
@@ -96,6 +105,15 @@ final class TrainModel {
     /// N iters up until the cap. For a 400-iter run with a 200-sample cap
     /// that's 1:1; for longer runs it downsamples transparently.
     private var sampleStride: Int = 1
+
+    /// Stable promptID → index into growingModelSamples. Matches the three
+    /// entries in GrowingModelPrompts.defaults — authoritative for what the
+    /// sidecar emits on the wire.
+    private static let promptIndex: [String: Int] = [
+        "week_focus": 0,
+        "birthday_msg": 1,
+        "perfect_sunday": 2
+    ]
 
     init(runner: TrainingRunner? = nil) {
         self.runner = runner
@@ -143,6 +161,8 @@ final class TrainModel {
         isWarmingUp = true
         totalIters = nil
         sidecarVersion = nil
+        growingModelSamples = []
+        totalEpochs = 1
         request = nil
         startTime = nil
     }
@@ -160,6 +180,10 @@ final class TrainModel {
         self.sidecarVersion = nil
         self.lastPublishedAt = 0
         self.etaEstimator = EtaEstimator(hyperparameters: request.hyperparameters)
+        self.totalEpochs = max(1, request.hyperparameters.epochs)
+        self.growingModelSamples = GrowingModelPrompts.defaults.map { prompt in
+            PromptSample(prompt: prompt.text)
+        }
         if let iters = request.itersOverride, iters > lossHistoryCap {
             self.sampleStride = max(1, iters / lossHistoryCap)
         } else {
@@ -225,9 +249,22 @@ final class TrainModel {
                 )
             }
 
-        case .sample:
-            // M6 renders Growing-Model samples; M5 forwards silently.
-            break
+        case .sample(let sample):
+            guard let idx = Self.promptIndex[sample.promptID],
+                  idx < growingModelSamples.count else {
+                // Unknown promptID: silently skip. The three stable IDs in
+                // GrowingModelPrompts.defaults are authoritative; anything
+                // else is forward-compat noise or a test-harness probe.
+                break
+            }
+            let existing = growingModelSamples[idx]
+            growingModelSamples[idx] = PromptSample(
+                id: existing.id,
+                prompt: existing.prompt,
+                currentResponse: sample.completion,
+                isUpdating: false,
+                stylizationScore: stylizationProxy(iter: sample.iter)
+            )
 
         case .checkpoint(let path, let iter, _):
             lastCheckpoint = (url: path, iter: iter)
@@ -287,5 +324,39 @@ extension TrainModel {
         let hours = minutes / 60
         let mm = minutes % 60
         return String(format: "%dh %02dm", hours, mm)
+    }
+
+    /// Current 1-indexed epoch, derived from the latest progress iter and
+    /// the captured totalIters/totalEpochs. Falls back to 1 when the sidecar
+    /// has not reported a total iter count yet.
+    var currentEpoch: Int {
+        guard let iter = currentProgress?.iter,
+              let total = totalIters, total > 0,
+              totalEpochs > 0 else { return 1 }
+        let itersPerEpoch = max(1, total / totalEpochs)
+        return min(totalEpochs, 1 + max(0, iter - 1) / itersPerEpoch)
+    }
+
+    /// State for GrowingModelPanelView. Empty until at least one sample has
+    /// a response; inProgress while training; completed when training ends.
+    var growingModelState: GrowingModelState {
+        switch status {
+        case .completed:
+            return .completed
+        case .idle, .failed:
+            return .empty
+        case .running, .cancelling:
+            return growingModelSamples.contains { $0.currentResponse != nil } ? .inProgress : .empty
+        }
+    }
+
+    /// Pragmatic proxy for per-prompt stylization — the real metric isn't
+    /// wired yet, so we map training progress (0–100%) to the gauge so the
+    /// panel shows movement in sync with the global progress capsule.
+    fileprivate func stylizationProxy(iter: Int) -> Double {
+        let total = totalIters ?? max(iter, 1)
+        guard total > 0 else { return 0 }
+        let ratio = Double(min(iter, total)) / Double(total)
+        return max(0, min(100, ratio * 100))
     }
 }
