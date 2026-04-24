@@ -54,7 +54,22 @@ struct StageRouterView: View {
                 }
             )
         case .training:
-            TrainStageView(project: project)
+            TrainStageView(
+                project: project,
+                model: model.trainModel,
+                onStart: { model.startTraining(projectID: project.id) },
+                onCancel: { model.cancelTraining() },
+                onContinue: {
+                    withAnimation(Kiln.Motion.standard) {
+                        model.continueFromTraining(projectID: project.id)
+                    }
+                },
+                onReset: {
+                    withAnimation(Kiln.Motion.standard) {
+                        model.resetTraining()
+                    }
+                }
+            )
         case .complete:
             CompleteStageView(project: project)
         }
