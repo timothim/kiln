@@ -1,14 +1,16 @@
 import SwiftUI
 
-/// Stage 3 — training complete. Shows a confident header, stat grid, and the
-/// built-in chat pane. Terminal hand-off copy remains visible as a secondary
-/// affordance for power users. No exclamation marks (one is reserved for the
-/// final export-success moment inside the chat once Ollama confirms).
+/// Stage 3 — training complete. Confident header, stat grid, the built-in
+/// chat pane, the Terminal hand-off line in monospace, and a "Share voice"
+/// button that opens the Kiln Share export sheet. No exclamation marks (one
+/// is reserved for the final export-success moment when Ollama confirms).
 struct CompleteStageView: View {
     let project: Project
     var chatModel: ChatModel?
     let onOpenChat: () -> Void
     let onCloseChat: () -> Void
+
+    @State private var isShareSheetPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.l) {
@@ -30,11 +32,22 @@ struct CompleteStageView: View {
 
             terminalLine
                 .padding(.top, Kiln.Space.xs)
-
+            shareRow
+                .padding(.top, Kiln.Space.xs)
             Spacer(minLength: 0)
         }
         .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: $isShareSheetPresented) {
+            ShareExportSheet(
+                voiceName: project.name,
+                voiceTag: "kiln/\(project.slug):latest",
+                onExport: { options in
+                    await ShareController.runExport(project: project, options: options)
+                },
+                onCancel: { isShareSheetPresented = false }
+            )
+        }
     }
 
     private var header: some View {
@@ -56,7 +69,7 @@ struct CompleteStageView: View {
                         .accessibilityLabel("Close chat")
                 }
             }
-            Text("Your model is trained. Start chatting, or hand off to Terminal.")
+            Text("Your model is trained. Start chatting, hand off to Terminal, or share the voice as a `.kiln` bundle.")
                 .font(Kiln.Font.body)
                 .foregroundStyle(.secondary)
         }
@@ -65,10 +78,7 @@ struct CompleteStageView: View {
     private var statsRow: some View {
         HStack(spacing: Kiln.Space.m) {
             Stat(label: "Model", value: "Qwen2.5-\(project.modelSize.displayName)")
-            Stat(
-                label: "Chunks",
-                value: chunksValue
-            )
+            Stat(label: "Chunks", value: chunksValue)
             Stat(
                 label: "Trained",
                 value: project.lastTrained
@@ -138,5 +148,27 @@ struct CompleteStageView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Terminal command: ollama run kiln dash \(project.slug)")
+    }
+
+    private var shareRow: some View {
+        HStack(spacing: Kiln.Space.sm) {
+            Button {
+                isShareSheetPresented = true
+            } label: {
+                Label("Share voice", systemImage: "square.and.arrow.up")
+                    .padding(.horizontal, Kiln.Space.xs)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .controlSize(.regular)
+            .disabled(project.trainingReport == nil)
+            .accessibilityHint("Package this voice as a .kiln bundle you can share.")
+
+            if project.trainingReport == nil {
+                Text("Finish training to enable sharing.")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
