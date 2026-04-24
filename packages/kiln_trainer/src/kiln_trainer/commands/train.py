@@ -18,6 +18,7 @@ Stdout parsing anchors on the exact format printed by ``mlx_lm.tuner.trainer``
 from __future__ import annotations
 
 import argparse
+import json
 import queue
 import re
 import signal
@@ -25,7 +26,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Callable
 
 from kiln_trainer import chatml, events, hyperparams, runtime
 
@@ -124,7 +125,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.sample_prompts_file is not None:
         runtime.log(
-            "sample-prompts-file accepted; Growing Model samples deferred to M6",
+            "sample-prompts-file set; Growing Model samples will use this list at each checkpoint",
             path=str(args.sample_prompts_file),
         )
 
@@ -155,7 +156,16 @@ def run(args: argparse.Namespace) -> int:
     threading.Thread(target=_drain, args=(proc.stdout, out_q), daemon=True).start()
     threading.Thread(target=_drain, args=(proc.stderr, err_q), daemon=True).start()
 
-    handler = _LineHandler(stage="sft")
+    def _on_checkpoint(it: int, adapter_path: str) -> None:
+        _emit_samples_after_checkpoint(
+            adapter_path=adapter_path,
+            iter=it,
+            model=args.model,
+            sampler_entry=args.sampler_entry,
+            prompts_file=args.sample_prompts_file,
+        )
+
+    handler = _LineHandler(stage="sft", on_checkpoint=_on_checkpoint)
     interrupted = False
     poll_interval = 0.1
 
@@ -217,12 +227,24 @@ def run(args: argparse.Namespace) -> int:
 
 class _LineHandler:
     """Stateful parser: carries the last-seen train loss so val lines can emit
-    a well-formed :func:`events.progress` (which requires ``loss``)."""
+    a well-formed :func:`events.progress` (which requires ``loss``).
 
-    def __init__(self, *, stage: str) -> None:
+    Optional ``on_checkpoint`` callback fires after every ``checkpoint`` event
+    is emitted — M6.5 uses it to kick off the Growing Model sampler. The
+    callback receives ``(iter, adapter_path)``. Exceptions raised by the
+    callback are caught and logged so a sampler failure never breaks training.
+    """
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        on_checkpoint: Callable[[int, str], None] | None = None,
+    ) -> None:
         self.stage = stage
         self._last_train_loss: float | None = None
         self.last_checkpoint: str | None = None
+        self._on_checkpoint = on_checkpoint
 
     def handle(self, text: str) -> None:
         m_save = _RE_SAVE.search(text)
@@ -231,6 +253,15 @@ class _LineHandler:
             path = m_save.group(2).rstrip(".")
             events.emit(events.checkpoint(path=path, iter=it))
             self.last_checkpoint = path
+            if self._on_checkpoint is not None:
+                try:
+                    self._on_checkpoint(it, path)
+                except Exception as exc:
+                    runtime.log(
+                        "on_checkpoint callback raised; continuing training",
+                        iter=it,
+                        error=str(exc),
+                    )
             return
 
         m_final = _RE_FINAL_SAVE.search(text)
@@ -350,3 +381,116 @@ def _drain_remaining(q: "queue.Queue[str | None]", *, label: str) -> None:
         if line is None:
             return
         runtime.log(label, line=line.rstrip("\n"))
+
+
+# ---------- M6.5: Growing Model samples at each checkpoint ----------
+
+
+_SAMPLER_BUDGET_S: float = 30.0
+
+
+def _emit_samples_after_checkpoint(
+    *,
+    adapter_path: str,
+    iter: int,
+    model: str,
+    sampler_entry: str | None,
+    prompts_file: Path | None,
+    budget_s: float = _SAMPLER_BUDGET_S,
+) -> None:
+    """Run ``sample-batch`` against the freshly-saved adapter and emit a
+    ``sample`` event for each prompt.
+
+    This runs synchronously on the main training loop — the ~10 s pause is
+    acceptable because mlx_lm has already flushed the checkpoint and any
+    trainer stdout that queues up meanwhile is captured by the drain thread.
+
+    Never raises. On timeout, non-zero exit, or malformed subprocess stdout,
+    we ``runtime.log`` a warning (stderr) and return silently; training keeps
+    running. No ``error`` event is emitted on stdout because a failed
+    Growing Model sample is not a failed training run.
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "kiln_trainer",
+        "sample-batch",
+        "--model",
+        model,
+        "--adapter-path",
+        adapter_path,
+        "--max-tokens",
+        "150",
+        "--temp",
+        "0.7",
+    ]
+    if prompts_file is not None:
+        cmd += ["--prompts-file", str(prompts_file)]
+    if sampler_entry is not None:
+        cmd += ["--generator-entry", sampler_entry]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=budget_s,
+        )
+    except subprocess.TimeoutExpired:
+        runtime.log(
+            "sample-batch exceeded budget; skipping samples for this checkpoint",
+            iter=iter,
+            budget_s=budget_s,
+        )
+        return
+    except (FileNotFoundError, OSError) as exc:
+        runtime.log(
+            "sample-batch failed to spawn",
+            iter=iter,
+            error=str(exc),
+        )
+        return
+
+    if proc.returncode != 0:
+        runtime.log(
+            "sample-batch exited non-zero; skipping samples",
+            iter=iter,
+            returncode=proc.returncode,
+            stderr_tail=proc.stderr[-400:] if proc.stderr else "",
+        )
+        return
+
+    _reemit_generations_as_samples(proc.stdout, iter=iter)
+
+
+def _reemit_generations_as_samples(stdout_text: str, *, iter: int) -> None:
+    """Parse sample-batch stdout and emit one ``sample`` event per
+    ``generation`` event, tagged with ``iter``. Other event types (ready,
+    done, error) are ignored."""
+    for line in stdout_text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict) or ev.get("event") != "generation":
+            continue
+        prompt_id = ev.get("prompt_id")
+        completion = ev.get("completion")
+        if not isinstance(prompt_id, str) or not isinstance(completion, str):
+            continue
+        tokens_per_s_raw = ev.get("tokens_per_s")
+        tokens_per_s: float | None
+        if isinstance(tokens_per_s_raw, (int, float)):
+            tokens_per_s = float(tokens_per_s_raw)
+        else:
+            tokens_per_s = None
+        events.emit(
+            events.sample(
+                iter=iter,
+                prompt_id=prompt_id,
+                completion=completion,
+                tokens_per_s=tokens_per_s,
+            )
+        )

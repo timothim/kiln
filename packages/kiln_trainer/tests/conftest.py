@@ -23,5 +23,10 @@ def fake_generator(fixtures_dir: Path) -> Path:
 
 
 @pytest.fixture
+def fake_batch_generator(fixtures_dir: Path) -> Path:
+    return fixtures_dir / "fake_batch_generator.py"
+
+
+@pytest.fixture
 def tiny_dataset(fixtures_dir: Path) -> Path:
     return fixtures_dir / "tiny_chatml.jsonl"

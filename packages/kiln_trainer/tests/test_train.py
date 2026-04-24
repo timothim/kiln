@@ -23,7 +23,11 @@ from pathlib import Path
 
 import pytest
 
-from kiln_trainer.commands.train import _LineHandler, _render_lora_yaml
+from kiln_trainer.commands.train import (
+    _LineHandler,
+    _reemit_generations_as_samples,
+    _render_lora_yaml,
+)
 
 
 def _events(text: str) -> list[dict]:
@@ -146,6 +150,143 @@ def test_line_handler_ignores_unrelated_stdout(
     assert _events(capsys.readouterr().out) == []
 
 
+# ---------- Unit: M6.5 checkpoint callback + sample re-emitter ----------
+
+
+def test_line_handler_fires_on_checkpoint_callback(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Save line → checkpoint event AND on_checkpoint(it, path). This is the
+    contract the M6.5 post-checkpoint sampler depends on."""
+    captured: list[tuple[int, str]] = []
+
+    def _on_ckpt(it: int, path: str) -> None:
+        captured.append((it, path))
+
+    h = _LineHandler(stage="sft", on_checkpoint=_on_ckpt)
+    h.handle("Iter 50: Saved adapter weights to /tmp/adapters.safetensors.")
+
+    events = _events(capsys.readouterr().out)
+    assert events == [
+        {"event": "checkpoint", "path": "/tmp/adapters.safetensors", "iter": 50}
+    ]
+    assert captured == [(50, "/tmp/adapters.safetensors")]
+
+
+def test_line_handler_callback_exception_does_not_break_training(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A sampler failure must never abort training. The checkpoint event is
+    already emitted; a raising callback should be swallowed and logged."""
+
+    def _boom(it: int, path: str) -> None:
+        raise RuntimeError("sampler exploded")
+
+    h = _LineHandler(stage="sft", on_checkpoint=_boom)
+    h.handle("Iter 50: Saved adapter weights to /tmp/adapters.safetensors.")
+
+    out = _events(capsys.readouterr().out)
+    assert out == [{"event": "checkpoint", "path": "/tmp/adapters.safetensors", "iter": 50}]
+
+
+def test_sample_hook_transforms_generation_into_sample_events_with_iter(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``_reemit_generations_as_samples`` is the core of the post-checkpoint
+    closure. Feed it canned sample-batch stdout and assert every
+    ``generation`` becomes a ``sample`` with the injected iter."""
+    stdout = "\n".join(
+        [
+            json.dumps({"event": "ready", "version": "0.1.0", "mlx": "n/a"}),
+            json.dumps(
+                {
+                    "event": "generation",
+                    "prompt": "What should I work on this week?",
+                    "prompt_id": "week_focus",
+                    "completion": "Focus on X.",
+                    "tokens": 5,
+                    "tokens_per_s": 42.0,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "generation",
+                    "prompt": "Write a one-line birthday message for a friend.",
+                    "prompt_id": "birthday_msg",
+                    "completion": "Happy birthday!",
+                    "tokens": 3,
+                    "tokens_per_s": 44.5,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "generation",
+                    "prompt": "Describe your perfect Sunday.",
+                    "prompt_id": "perfect_sunday",
+                    "completion": "Coffee, a book, a long walk.",
+                    "tokens": 8,
+                    "tokens_per_s": 39.7,
+                }
+            ),
+            json.dumps(
+                {"event": "done", "stage": "generation", "artifact": "/t/a"}
+            ),
+        ]
+    )
+
+    _reemit_generations_as_samples(stdout, iter=50)
+
+    out = _events(capsys.readouterr().out)
+    assert [e["event"] for e in out] == ["sample", "sample", "sample"]
+    for ev in out:
+        assert ev["iter"] == 50
+    assert [e["prompt_id"] for e in out] == [
+        "week_focus",
+        "birthday_msg",
+        "perfect_sunday",
+    ]
+    assert out[0]["completion"] == "Focus on X."
+    assert out[1]["completion"] == "Happy birthday!"
+    assert out[2]["completion"] == "Coffee, a book, a long walk."
+    for ev in out:
+        assert isinstance(ev["tokens_per_s"], float)
+
+
+def test_sample_hook_skips_malformed_lines(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Non-JSON lines, non-generation events, and missing fields are ignored."""
+    stdout = "\n".join(
+        [
+            "not json at all",
+            json.dumps({"event": "ready", "version": "0.1.0"}),
+            json.dumps({"event": "generation"}),  # missing required fields
+            json.dumps(
+                {
+                    "event": "generation",
+                    "prompt": "p",
+                    "prompt_id": "ok",
+                    "completion": "c",
+                    "tokens": 1,
+                    "tokens_per_s": 1.0,
+                }
+            ),
+        ]
+    )
+
+    _reemit_generations_as_samples(stdout, iter=7)
+
+    out = _events(capsys.readouterr().out)
+    assert len(out) == 1
+    assert out[0] == {
+        "event": "sample",
+        "iter": 7,
+        "prompt_id": "ok",
+        "completion": "c",
+        "tokens_per_s": 1.0,
+    }
+
+
 # ---------- End-to-end subprocess ----------
 
 
@@ -158,7 +299,16 @@ def _run_train(
     save_every: int = 5,
     model: str = "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
     timeout: float = 30.0,
+    sampler_entry: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    """Invoke ``python -m kiln_trainer train ...`` with sensible test defaults.
+
+    M6.5: the train subprocess spawns ``sample-batch`` after every checkpoint
+    save. If ``sampler_entry`` is not provided, we default to the
+    ``fake_batch_generator`` fixture so the child exits instantly instead of
+    loading a real MLX model against the zero-byte adapter stub. Tests that
+    explicitly exercise the M6.5 pipeline pass ``sampler_entry`` themselves.
+    """
     run_dir = tmp_path / "run"
     cmd = [
         sys.executable,
@@ -173,6 +323,9 @@ def _run_train(
         "--val-batches", "1",
         "--trainer-entry", str(fake_trainer),
     ]
+    if sampler_entry is None:
+        sampler_entry = Path(__file__).parent / "fixtures" / "fake_batch_generator.py"
+    cmd += ["--sampler-entry", str(sampler_entry)]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
@@ -326,3 +479,67 @@ def test_ready_emitted_before_heavy_work(
     assert result.returncode == 0, result.stderr
     first = result.stdout.splitlines()[0]
     assert json.loads(first)["event"] == "ready"
+
+
+# ---------- Integration: M6.5 Growing Model samples at each checkpoint ----------
+
+
+def test_train_emits_sample_events_at_each_checkpoint(
+    tmp_path: Path,
+    tiny_dataset: Path,
+    fake_trainer: Path,
+    fake_batch_generator: Path,
+) -> None:
+    """End-to-end: 20 iters, save every 5 → 4 checkpoints, each followed by 3
+    ``sample`` events (one per default prompt) carrying the checkpoint's iter.
+
+    Uses ``--sampler-entry`` to swap the real MLX batch generator for the
+    fake, so the test runs without MLX installed. Proves the whole chain:
+    _LineHandler → _on_checkpoint closure → sample-batch subprocess →
+    _reemit_generations_as_samples → stdout ``sample`` events."""
+    run_dir = tmp_path / "run"
+    cmd = [
+        sys.executable,
+        "-m",
+        "kiln_trainer",
+        "train",
+        "--dataset", str(tiny_dataset),
+        "--model", "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+        "--run-dir", str(run_dir),
+        "--iters", "20",
+        "--save-every", "5",
+        "--val-batches", "1",
+        "--trainer-entry", str(fake_trainer),
+        "--sampler-entry", str(fake_batch_generator),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60.0)
+    assert result.returncode == 0, result.stderr
+
+    events = _events(result.stdout)
+    types = [e["event"] for e in events]
+    assert types[0] == "ready"
+    assert types[-1] == "done"
+
+    # Checkpoints at iters 5, 10, 15, 20 — one from fake_trainer per save,
+    # then the caller records the final weights line too (no extra checkpoint).
+    ckpts = [e for e in events if e["event"] == "checkpoint"]
+    assert [c["iter"] for c in ckpts] == [5, 10, 15, 20]
+
+    # Three sample events per checkpoint, in the default prompt order.
+    samples = [e for e in events if e["event"] == "sample"]
+    assert len(samples) == 12  # 4 ckpts × 3 prompts
+
+    expected_ids = ["week_focus", "birthday_msg", "perfect_sunday"]
+    for ck_iter, chunk_start in zip([5, 10, 15, 20], range(0, 12, 3)):
+        chunk = samples[chunk_start : chunk_start + 3]
+        assert [s["iter"] for s in chunk] == [ck_iter, ck_iter, ck_iter]
+        assert [s["prompt_id"] for s in chunk] == expected_ids
+        for s in chunk:
+            assert s["completion"].startswith("echo: ")
+
+    # Each sample block must appear AFTER its checkpoint event.
+    for i, ck in enumerate(ckpts):
+        ck_pos = events.index(ck)
+        block = samples[i * 3 : i * 3 + 3]
+        for s in block:
+            assert events.index(s) > ck_pos
