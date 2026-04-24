@@ -172,6 +172,11 @@ private struct VoiceMirrorColumn: View {
     let onRetry: () -> Void
 
     @State private var isHovered = false
+    @State private var isPinned = false
+    @FocusState private var isFocused: Bool
+
+    private var isModelColumn: Bool { reflection.source != .userAnswer }
+    private var isHighlighted: Bool { isHovered || isFocused || isPinned }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
@@ -184,11 +189,27 @@ private struct VoiceMirrorColumn: View {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .strokeBorder(Kiln.Palette.firing.opacity(isPinned ? 0.45 : 0),
+                              lineWidth: 1)
+                .animation(.smooth(duration: 0.25), value: isPinned)
+        }
         .onHover { hovering in
             isHovered = hovering
         }
+        .focusable(isModelColumn && reflection.state == .done)
+        .focused($isFocused)
+        .onTapGesture {
+            guard isModelColumn, reflection.state == .done else { return }
+            isPinned.toggle()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(a11yLabel)
+        .accessibilityAction(named: pinActionName) {
+            guard isModelColumn, reflection.state == .done else { return }
+            isPinned.toggle()
+        }
     }
 
     private var header: some View {
@@ -201,7 +222,16 @@ private struct VoiceMirrorColumn: View {
                 .kerning(0.44)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
+            Spacer(minLength: 0)
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: Kiln.Icon.small - 3, weight: .semibold))
+                    .foregroundStyle(Kiln.Palette.firing)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    .accessibilityHidden(true)
+            }
         }
+        .animation(.smooth(duration: 0.2), value: isPinned)
     }
 
     @ViewBuilder
@@ -241,7 +271,7 @@ private struct VoiceMirrorColumn: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.smooth(duration: 0.25), value: isHovered)
+                .animation(.smooth(duration: 0.25), value: isHighlighted)
         case let .failed(message):
             VStack(alignment: .leading, spacing: Kiln.Space.xs) {
                 Text(message)
@@ -256,7 +286,7 @@ private struct VoiceMirrorColumn: View {
 
     private var attributedContinuation: AttributedString {
         var s = AttributedString(reflection.continuation)
-        guard isHovered else { return s }
+        guard isHighlighted else { return s }
         for phrase in reflection.signaturePhrases {
             if let range = s.range(of: phrase) {
                 s[range].backgroundColor = Kiln.Palette.firingWash
@@ -266,6 +296,10 @@ private struct VoiceMirrorColumn: View {
         return s
     }
 
+    private var pinActionName: String {
+        isPinned ? "Hide signature phrases" : "Show signature phrases"
+    }
+
     private var a11yLabel: String {
         switch reflection.state {
         case .idle:
@@ -273,7 +307,10 @@ private struct VoiceMirrorColumn: View {
         case .generating:
             return "\(reflection.source.rawValue): generating"
         case .done:
-            return "\(reflection.source.rawValue): \(reflection.continuation)"
+            let phraseSentence = reflection.signaturePhrases.isEmpty
+                ? ""
+                : " Signature phrases: \(reflection.signaturePhrases.joined(separator: ", "))."
+            return "\(reflection.source.rawValue).\(phraseSentence) Response: \(reflection.continuation)"
         case let .failed(message):
             return "\(reflection.source.rawValue) failed: \(message)"
         }
