@@ -57,6 +57,7 @@ struct StageRouterView: View {
             TrainStageView(
                 project: project,
                 model: model.trainModel,
+                exportModel: model.exportModel,
                 onStart: { model.startTraining(projectID: project.id) },
                 onCancel: { model.cancelTraining() },
                 onContinue: {
@@ -68,10 +69,17 @@ struct StageRouterView: View {
                     withAnimation(Kiln.Motion.standard) {
                         model.resetTraining()
                     }
-                }
+                },
+                onExport: { model.startExport(projectID: project.id) },
+                onDismissExport: { model.dismissExport() }
             )
         case .complete:
-            CompleteStageView(project: project)
+            CompleteStageView(
+                project: project,
+                chatModel: model.chatModel,
+                onOpenChat: { model.openChat(for: project.id) },
+                onCloseChat: { model.closeChat() }
+            )
         }
     }
 }

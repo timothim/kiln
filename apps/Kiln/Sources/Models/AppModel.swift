@@ -11,13 +11,23 @@ final class AppModel {
     var sidebarVisibility: NavigationSplitViewVisibility = .all
     var prepareModel: PrepareModel?
     var trainModel: TrainModel?
+    var exportModel: ExportModel?
+    var chatModel: ChatModel?
 
     /// Injected so tests can supply a fake TrainingRunner. Nil in the default
     /// init path — production wiring resolves the Python sidecar launcher.
     private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
+    private let ollamaExporterFactory: (@MainActor () -> OllamaExporter)?
+    private let ollamaClientFactory: (@MainActor () -> OllamaClient)?
 
-    init(trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil) {
+    init(
+        trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
+        ollamaExporterFactory: (@MainActor () -> OllamaExporter)? = nil,
+        ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil
+    ) {
         self.trainingRunnerFactory = trainingRunnerFactory
+        self.ollamaExporterFactory = ollamaExporterFactory
+        self.ollamaClientFactory = ollamaClientFactory
     }
 
     var selectedProject: Project? {
@@ -130,6 +140,53 @@ final class AppModel {
         trainModel = nil
     }
 
+    // MARK: - Export
+
+    func startExport(projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let report = projects[idx].trainingReport else { return }
+        if let existing = exportModel, case .running = existing.status { return }
+
+        let userName = NSFullUserName().isEmpty ? projects[idx].name : NSFullUserName()
+        let outputName = "kiln-\(projects[idx].slug)"
+        let runDir = report.adapterURL.deletingLastPathComponent()
+        let request = ExportRequest(
+            model: Self.defaultBaseModel(for: projects[idx].modelSize),
+            adapterURL: report.adapterURL,
+            runDir: runDir,
+            userName: userName,
+            outputName: outputName,
+            llamaCppDir: Self.llamaCppDir(),
+            quantization: nil,
+            skipGGUF: false,
+            skipOllama: false
+        )
+        let model = ExportModel(exporter: resolveOllamaExporter())
+        exportModel = model
+        model.start(request: request)
+    }
+
+    func cancelExport() {
+        exportModel?.cancel()
+    }
+
+    func dismissExport() {
+        exportModel = nil
+    }
+
+    // MARK: - Chat
+
+    func openChat(for projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        let modelName = "kiln-\(projects[idx].slug)"
+        chatModel = ChatModel(modelName: modelName, client: resolveOllamaClient())
+    }
+
+    func closeChat() {
+        chatModel?.cancel()
+        chatModel = nil
+    }
+
     // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
@@ -146,6 +203,41 @@ final class AppModel {
         }
         let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
         return SubprocessTrainingRunner(launcher: launcher)
+    }
+
+    private func resolveOllamaExporter() -> OllamaExporter {
+        if let factory = ollamaExporterFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessOllamaExporter(launcher: launcher)
+    }
+
+    private func resolveOllamaClient() -> OllamaClient {
+        if let factory = ollamaClientFactory {
+            return factory()
+        }
+        return URLSessionOllamaClient()
+    }
+
+    /// Best-effort resolver for a llama.cpp checkout. Respects the
+    /// ``KILN_LLAMA_CPP_DIR`` env var, then falls back to a few common
+    /// locations under the user's home directory. When none resolve the
+    /// export stage will emit a friendly error event and the UI will show
+    /// a recoverable failure.
+    static func llamaCppDir() -> URL? {
+        let fm = FileManager.default
+        if let explicit = ProcessInfo.processInfo.environment["KILN_LLAMA_CPP_DIR"] {
+            let url = URL(fileURLWithPath: explicit)
+            if fm.fileExists(atPath: url.path) { return url }
+        }
+        let home = fm.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent("llama.cpp"),
+            home.appendingPathComponent("Developer/llama.cpp"),
+            URL(fileURLWithPath: "/opt/homebrew/Cellar/llama.cpp")
+        ]
+        return candidates.first { fm.fileExists(atPath: $0.path) }
     }
 
     static func scratchDirectory(for projectID: Project.ID) -> URL {
