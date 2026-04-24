@@ -131,7 +131,7 @@ This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opu
 
 | Component | Opus input → output | Volume | Shipped form | Bar | Current |
 |---|---|---|---|---|---|
-| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high) |
+| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high); **day-4 full-run attempt (2200-row / $30 cap) staged alongside preference + style but blocked on same `ANTHROPIC_API_KEY` guard (§6.5.3, §6.5.4)** |
 | `preference-judge` | (prompt, A, B) → winner | 5 000 labels (pilot 300) | CoreML (paired-input head) | accuracy ≥ 0.80 | **orchestrator spec + 300-pair balanced input authored (§6.5); live pilot pending `ANTHROPIC_API_KEY` export** |
 | `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels (pilot 300) | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | **orchestrator spec authored (§6.5); input synthesis tripped the content filter and is deferred; live pilot pending both** |
 
