@@ -151,7 +151,7 @@ private struct VoiceCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Text("\(voice.sampleCount) samples · \(Self.dateFormatter.string(from: voice.createdAt))")
+            Text("\(voice.sampleCount) samples · \(Self.relativeDate(from: voice.createdAt))")
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -203,7 +203,25 @@ private struct VoiceCard: View {
         return "Voice \(voice.name), \(state). Tag \(voice.ollamaTag). \(voice.sampleCount) samples."
     }
 
-    private static let dateFormatter: DateFormatter = {
+    /// Warmer than an absolute medium date for a library that grows over time —
+    /// "2 days ago" reads like something a user would say. Falls back to an
+    /// absolute date after 30 days, when relative starts to feel lossy.
+    private static func relativeDate(from date: Date) -> String {
+        let elapsed = Date().timeIntervalSince(date)
+        if elapsed > 60 * 60 * 24 * 30 {
+            return absoluteDateFormatter.string(from: date)
+        }
+        return relativeDateFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        f.dateTimeStyle = .named
+        return f
+    }()
+
+    private static let absoluteDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none
