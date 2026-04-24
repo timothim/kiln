@@ -10,6 +10,15 @@ final class AppModel {
     var selectedProjectID: Project.ID?
     var sidebarVisibility: NavigationSplitViewVisibility = .all
     var prepareModel: PrepareModel?
+    var trainModel: TrainModel?
+
+    /// Injected so tests can supply a fake TrainingRunner. Nil in the default
+    /// init path — production wiring resolves the Python sidecar launcher.
+    private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
+
+    init(trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil) {
+        self.trainingRunnerFactory = trainingRunnerFactory
+    }
 
     var selectedProject: Project? {
         guard let id = selectedProjectID else { return nil }
@@ -25,6 +34,8 @@ final class AppModel {
     func select(_ id: Project.ID?) {
         selectedProjectID = id
     }
+
+    // MARK: - Ingest
 
     func ingest(folderURL: URL) {
         if let existing = prepareModel, case .running = existing.status {
@@ -72,9 +83,54 @@ final class AppModel {
         projects[idx].ingestReport = report
         projects[idx].keptChunks = report.chunksAfterQuality
         projects[idx].totalChunks = report.chunksBeforeDedup
+        if let trainPath = report.outputPaths?.trainJSONL {
+            projects[idx].preparedDatasetURL = URL(fileURLWithPath: trainPath)
+        }
         projects[idx].stage = .training
         prepareModel = nil
+        // Reset any stale TrainModel from a previous session so the Teach
+        // empty-state shows cleanly.
+        trainModel?.reset()
+        trainModel = nil
     }
+
+    // MARK: - Train
+
+    func startTraining(projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let datasetURL = projects[idx].preparedDatasetURL else { return }
+        if let existing = trainModel, case .running = existing.status { return }
+
+        let runDir = Self.runDirectory(for: projectID)
+        let request = TrainingRequest(
+            datasetURL: datasetURL,
+            runDir: runDir,
+            model: Self.defaultBaseModel(for: projects[idx].modelSize)
+        )
+        let model = TrainModel(runner: resolveTrainingRunner())
+        trainModel = model
+        model.start(request: request)
+    }
+
+    func cancelTraining() {
+        trainModel?.cancel()
+    }
+
+    func resetTraining() {
+        trainModel?.reset()
+        trainModel = nil
+    }
+
+    func continueFromTraining(projectID: Project.ID) {
+        guard let model = trainModel, case .completed(let report) = model.status else { return }
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        projects[idx].trainingReport = report
+        projects[idx].lastTrained = Date()
+        projects[idx].stage = .complete
+        trainModel = nil
+    }
+
+    // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
         guard let idx = projects.firstIndex(where: { $0.id == id }) else { return }
@@ -84,9 +140,16 @@ final class AppModel {
         }
     }
 
+    private func resolveTrainingRunner() -> TrainingRunner {
+        if let factory = trainingRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessTrainingRunner(launcher: launcher)
+    }
+
     static func scratchDirectory(for projectID: Project.ID) -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let base = supportBase()
         let dir = base
             .appendingPathComponent("Kiln", isDirectory: true)
             .appendingPathComponent("projects", isDirectory: true)
@@ -94,5 +157,64 @@ final class AppModel {
             .appendingPathComponent("ingest", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    static func runDirectory(for projectID: Project.ID) -> URL {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let ts = formatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let dir = supportBase()
+            .appendingPathComponent("Kiln", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+            .appendingPathComponent("runs", isDirectory: true)
+            .appendingPathComponent(ts, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private static func supportBase() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    }
+
+    private static func defaultBaseModel(for size: Project.Size) -> String {
+        switch size {
+        case .small:  return "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+        case .medium: return "mlx-community/Qwen2.5-3B-Instruct-4bit"
+        case .large:  return "mlx-community/Qwen2.5-7B-Instruct-4bit"
+        }
+    }
+
+    /// Locate the in-tree kiln_trainer Python package. Walks up from the
+    /// running executable's directory — works for both `swift run` out of
+    /// `apps/Kiln/build/...` and the final `Kiln.app` bundle when the
+    /// package is shipped alongside.
+    private static func trainerPackageDir() -> URL {
+        let fm = FileManager.default
+        let cwdProbe = URL(fileURLWithPath: fm.currentDirectoryPath)
+            .appendingPathComponent("packages/kiln_trainer")
+        let candidates: [URL] = [
+            Bundle.main.bundleURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("packages/kiln_trainer"),
+            cwdProbe
+        ]
+        for url in candidates where fm.fileExists(atPath: url.path) {
+            return url
+        }
+        // Last-ditch fallback — walk upward from cwd looking for `pyproject.toml`
+        // inside a `packages/kiln_trainer` sibling. This handles being launched
+        // from a child working dir in dev.
+        var cursor = URL(fileURLWithPath: fm.currentDirectoryPath)
+        for _ in 0..<6 {
+            let probe = cursor.appendingPathComponent("packages/kiln_trainer")
+            if fm.fileExists(atPath: probe.appendingPathComponent("pyproject.toml").path) {
+                return probe
+            }
+            cursor.deleteLastPathComponent()
+        }
+        return cwdProbe
     }
 }

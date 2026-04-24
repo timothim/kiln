@@ -82,6 +82,18 @@ def _tool_available(binary: str) -> bool:
     return shutil.which(binary) is not None
 
 
+def _kiln_trainer_cmd(subcommand: list[str]) -> list[str]:
+    """Build an argv that runs `python -m kiln_trainer …` inside the uv-managed
+    sidecar venv. Falls back to the outer interpreter if `uv` is unavailable —
+    caller must be prepared for a non-zero rc in that case.
+    """
+    if _tool_available("uv"):
+        return ["uv", "run", "--project",
+                str(REPO_ROOT / "packages" / "kiln_trainer"),
+                "python", "-m", "kiln_trainer", *subcommand]
+    return [sys.executable, "-m", "kiln_trainer", *subcommand]
+
+
 # ---- Step 0: fixtures --------------------------------------------------
 
 
@@ -127,8 +139,8 @@ def step_ingest(work: Path) -> StepResult:
         )
     out = work / "ingest.jsonl"
     rc, stdout, stderr = _run(
-        [sys.executable, "-m", "kiln_trainer", "--help"],
-        timeout=15,
+        _kiln_trainer_cmd(["--help"]),
+        timeout=30,
         cwd=REPO_ROOT / "packages" / "kiln_trainer",
     )
     if rc != 0:
@@ -220,8 +232,8 @@ def step_training(work: Path) -> StepResult:
     # The full SFT rehearsal happens in the manual demo; the automated
     # gate just needs to know the pipe is alive.
     rc, stdout, stderr = _run(
-        [sys.executable, "-m", "kiln_trainer", "train", "--help"],
-        timeout=15,
+        _kiln_trainer_cmd(["train", "--help"]),
+        timeout=30,
         cwd=REPO_ROOT / "packages" / "kiln_trainer",
     )
     if rc != 0:
@@ -303,8 +315,8 @@ def step_before_after() -> StepResult:
 def step_ollama_export() -> StepResult:
     start = time.monotonic()
     rc, stdout, _ = _run(
-        [sys.executable, "-m", "kiln_trainer", "export", "--help"],
-        timeout=15,
+        _kiln_trainer_cmd(["export", "--help"]),
+        timeout=30,
         cwd=REPO_ROOT / "packages" / "kiln_trainer",
     )
     if rc != 0:

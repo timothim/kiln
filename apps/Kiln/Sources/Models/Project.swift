@@ -27,6 +27,8 @@ struct Project: Identifiable, Hashable {
     var keptChunks: Int?
     var totalChunks: Int?
     var ingestReport: IngestReport?
+    var preparedDatasetURL: URL?
+    var trainingReport: TrainingReport?
 
     init(id: UUID = UUID(),
          name: String,
@@ -36,7 +38,9 @@ struct Project: Identifiable, Hashable {
          lastTrained: Date? = nil,
          keptChunks: Int? = nil,
          totalChunks: Int? = nil,
-         ingestReport: IngestReport? = nil) {
+         ingestReport: IngestReport? = nil,
+         preparedDatasetURL: URL? = nil,
+         trainingReport: TrainingReport? = nil) {
         self.id = id
         self.name = name
         self.folderName = folderName
@@ -46,6 +50,8 @@ struct Project: Identifiable, Hashable {
         self.keptChunks = keptChunks
         self.totalChunks = totalChunks
         self.ingestReport = ingestReport
+        self.preparedDatasetURL = preparedDatasetURL
+        self.trainingReport = trainingReport
     }
 
     /// Safe slug for terminal hand-off copy. Lowercase, alphanumerics and hyphens only.
