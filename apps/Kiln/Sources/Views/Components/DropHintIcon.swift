@@ -6,12 +6,12 @@ struct DropHintIcon: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Kiln.Palette.accentWash)
+                .fill(Kiln.Palette.firingWash)
                 .frame(width: 92, height: 92)
 
             Image(systemName: "folder.badge.plus")
                 .font(.system(size: Kiln.Icon.hero, weight: .regular))
-                .foregroundStyle(Kiln.Palette.accent)
+                .foregroundStyle(Kiln.Palette.firing)
                 .symbolRenderingMode(.hierarchical)
         }
         .accessibilityHidden(true)

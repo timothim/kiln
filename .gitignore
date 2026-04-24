@@ -58,6 +58,10 @@ env/
 ## uv
 .uv-cache/
 
+# --- Node (design tooling only — not a JS app) ---
+node_modules/
+npm-debug.log*
+
 # --- Editor / IDE ---
 .idea/
 .vscode/

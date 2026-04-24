@@ -19,15 +19,17 @@ APP_BUNDLE := apps/$(APP_NAME)/build/Build/Products/Release/$(APP_NAME).app
 .PHONY: help
 help:
 	@echo "Kiln — available targets:"
-	@echo "  setup        Install Python sidecar deps (via uv), verify Xcode is present"
-	@echo "  test         Run Swift tests + Python pytest"
-	@echo "  build        Release build of the Kiln.app and the sidecar"
-	@echo "  run          Launch the built app"
-	@echo "  package      Build a distributable .dmg (not signed)"
-	@echo "  distill      Shortcut: python scripts/opus-distill/run.py --help"
-	@echo "  demo-check   End-to-end North-Star Demo sanity (<5 min, skips unimplemented)"
-	@echo "  video        Shortcut: open docs/demo/README.md in the editor"
-	@echo "  clean        Remove build artifacts and caches"
+	@echo "  setup          Install Python sidecar deps (via uv), verify Xcode is present"
+	@echo "  test           Run Swift tests + Python pytest"
+	@echo "  build          Release build of the Kiln.app and the sidecar"
+	@echo "  run            Launch the built app"
+	@echo "  design-lint    Validate /DESIGN.md via @google/design.md"
+	@echo "  design-export  Regenerate docs/design/tokens.dtcg.json"
+	@echo "  package        Build a distributable .dmg (not signed)"
+	@echo "  distill        Shortcut: python scripts/opus-distill/run.py --help"
+	@echo "  demo-check     End-to-end North-Star Demo sanity (<5 min, skips unimplemented)"
+	@echo "  video          Shortcut: open docs/demo/README.md in the editor"
+	@echo "  clean          Remove build artifacts and caches"
 
 # --- setup --------------------------------------------------------------
 
@@ -98,6 +100,31 @@ build-app:
 	             CODE_SIGNING_ALLOWED=NO build \
 	             -quiet; \
 	fi
+
+# --- design (DESIGN.md) -------------------------------------------------
+
+.PHONY: design-lint
+design-lint:
+	@if ! command -v npx >/dev/null 2>&1; then \
+	  echo "(skipping design-lint — npx not on PATH. Install Node.js to enable.)"; \
+	  exit 0; \
+	fi
+	@if [ ! -d node_modules/@google/design.md ]; then \
+	  echo "(installing @google/design.md — run 'npm install' to make this quiet)"; \
+	  npm install --silent >/dev/null 2>&1; \
+	fi
+	@npx design.md lint DESIGN.md
+
+.PHONY: design-export
+design-export:
+	@if ! command -v npx >/dev/null 2>&1; then \
+	  echo "!! npx not on PATH. Install Node.js first."; exit 1; \
+	fi
+	@if [ ! -d node_modules/@google/design.md ]; then \
+	  npm install --silent >/dev/null 2>&1; \
+	fi
+	@npx design.md export --format dtcg DESIGN.md > docs/design/tokens.dtcg.json
+	@echo "wrote docs/design/tokens.dtcg.json"
 
 # --- run ----------------------------------------------------------------
 

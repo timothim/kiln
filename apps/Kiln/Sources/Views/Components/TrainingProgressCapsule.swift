@@ -17,13 +17,13 @@ struct TrainingProgressCapsule: View {
 
             GeometryReader { proxy in
                 Capsule(style: .continuous)
-                    .fill(Kiln.Palette.accent)
+                    .fill(Kiln.Palette.firing)
                     .frame(width: max(12, proxy.size.width * clamped))
                     .opacity(reduceMotion ? 1.0 : (pulsing ? 1.0 : 0.9))
             }
         }
         .frame(height: 6)
-        .shadow(color: Kiln.Palette.accent.opacity(pulsing ? 0.4 : 0.2), radius: 14)
+        .shadow(color: Kiln.Palette.firing.opacity(pulsing ? 0.4 : 0.2), radius: 14)
         .onAppear {
             guard !reduceMotion, !pulsing else { return }
             withAnimation(Kiln.Motion.glow) { pulsing = true }

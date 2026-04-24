@@ -18,7 +18,7 @@ struct Stat: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .padding(Kiln.Space.s)
+        .padding(Kiln.Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)

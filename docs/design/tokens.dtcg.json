@@ -1,0 +1,271 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "A native macOS app that fine-tunes a local LLM to sound like you — slow, careful, on-device transformation, a kiln firing.",
+  "color": {
+    "$type": "color",
+    "firing": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.851,
+          0.467,
+          0.024
+        ],
+        "hex": "#d97706"
+      }
+    },
+    "on-firing": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          1,
+          1
+        ],
+        "hex": "#ffffff"
+      }
+    },
+    "firing-wash": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.988,
+          0.957,
+          0.922
+        ],
+        "hex": "#fcf4eb"
+      }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          1,
+          1
+        ],
+        "hex": "#ffffff"
+      }
+    },
+    "surface-elevated": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.976,
+          0.976,
+          0.976
+        ],
+        "hex": "#f9f9f9"
+      }
+    },
+    "surface-sunken": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.949,
+          0.949,
+          0.969
+        ],
+        "hex": "#f2f2f7"
+      }
+    },
+    "on-surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.11,
+          0.11,
+          0.118
+        ],
+        "hex": "#1c1c1e"
+      }
+    },
+    "on-surface-secondary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.235,
+          0.235,
+          0.263
+        ],
+        "hex": "#3c3c43"
+      }
+    },
+    "on-surface-tertiary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.557,
+          0.557,
+          0.576
+        ],
+        "hex": "#8e8e93"
+      }
+    },
+    "danger": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.827,
+          0.184,
+          0.184
+        ],
+        "hex": "#d32f2f"
+      }
+    }
+  },
+  "spacing": {
+    "$type": "dimension",
+    "xxs": {
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "xs": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "m": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "l": {
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "xl": {
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    }
+  },
+  "rounded": {
+    "$type": "dimension",
+    "sm": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    }
+  },
+  "typography": {
+    "display": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 28,
+          "unit": "px"
+        },
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.02,
+          "unit": "em"
+        },
+        "lineHeight": 34
+      }
+    },
+    "title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 22,
+          "unit": "px"
+        },
+        "fontWeight": 600,
+        "lineHeight": 28
+      }
+    },
+    "body-md": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 17,
+          "unit": "px"
+        },
+        "fontWeight": 400,
+        "lineHeight": 22
+      }
+    },
+    "body-sm": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 13,
+          "unit": "px"
+        },
+        "fontWeight": 400,
+        "lineHeight": 18
+      }
+    },
+    "label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 11,
+          "unit": "px"
+        },
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": 0.04,
+          "unit": "em"
+        },
+        "lineHeight": 14
+      }
+    },
+    "mono": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Mono",
+        "fontSize": {
+          "value": 13,
+          "unit": "px"
+        },
+        "fontWeight": 400,
+        "lineHeight": 18
+      }
+    },
+    "numeric": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "SF Pro",
+        "fontSize": {
+          "value": 17,
+          "unit": "px"
+        },
+        "fontWeight": 500,
+        "lineHeight": 22
+      }
+    }
+  }
+}

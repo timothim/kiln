@@ -9,13 +9,13 @@ struct IngestErrorView: View {
     let onReset: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: nil,
                 stage: project.stage
             )
-            VStack(alignment: .leading, spacing: Kiln.Space.s) {
+            VStack(alignment: .leading, spacing: Kiln.Space.m) {
                 HStack(spacing: Kiln.Space.xs) {
                     Image(systemName: iconName)
                         .font(.title2)
@@ -30,11 +30,11 @@ struct IngestErrorView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(Kiln.Space.m)
+            .padding(Kiln.Space.l)
             .frame(maxWidth: 520, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                    .fill(Kiln.Palette.accentWash)
+                    .fill(Kiln.Palette.surfaceSunken)
             )
 
             Spacer(minLength: 0)
@@ -48,7 +48,7 @@ struct IngestErrorView: View {
                 .accessibilityLabel("Try another folder")
             }
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -76,7 +76,7 @@ struct IngestErrorView: View {
     private var iconColor: Color {
         switch error {
         case .cancelled: return .secondary
-        default: return Kiln.Palette.accent
+        default: return Kiln.Palette.danger
         }
     }
 }

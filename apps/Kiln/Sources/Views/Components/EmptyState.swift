@@ -14,7 +14,7 @@ struct EmptyState: View {
     }
 
     var body: some View {
-        VStack(spacing: Kiln.Space.s) {
+        VStack(spacing: Kiln.Space.m) {
             Image(systemName: systemImage)
                 .font(.system(size: Kiln.Icon.placeholder, weight: .light))
                 .foregroundStyle(.tertiary)
@@ -40,7 +40,7 @@ struct EmptyState: View {
                     .padding(.top, Kiln.Space.xs)
             }
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: 380)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

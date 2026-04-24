@@ -58,7 +58,7 @@ struct PrepareStageView: View {
     }
 
     private var quietReading: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: "Reading your folder.",
@@ -81,7 +81,7 @@ struct PrepareStageView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

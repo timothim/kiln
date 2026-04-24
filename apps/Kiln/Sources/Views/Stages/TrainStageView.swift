@@ -13,7 +13,7 @@ struct TrainStageView: View {
     private let placeholderLoss = 1.24
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: "Teaching your model.",
@@ -24,7 +24,7 @@ struct TrainStageView: View {
                 .frame(maxWidth: 460)
                 .padding(.top, Kiln.Space.xs)
 
-            HStack(spacing: Kiln.Space.s) {
+            HStack(spacing: Kiln.Space.m) {
                 Stat(label: "Base", value: "Qwen2.5-\(project.modelSize.displayName)")
                 Stat(label: "Iter", value: "\(placeholderIter) of \(placeholderTotalIter)")
                 Stat(label: "Loss", value: String(format: "%.2f", placeholderLoss))
@@ -38,7 +38,7 @@ struct TrainStageView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

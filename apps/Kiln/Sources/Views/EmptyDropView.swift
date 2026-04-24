@@ -11,7 +11,7 @@ struct EmptyDropView: View {
         ZStack {
             Color.clear
 
-            VStack(spacing: Kiln.Space.m) {
+            VStack(spacing: Kiln.Space.l) {
                 DropHintIcon()
 
                 VStack(spacing: Kiln.Space.xs) {
@@ -39,15 +39,15 @@ struct EmptyDropView: View {
                 .foregroundStyle(.tertiary)
                 .padding(.top, Kiln.Space.xs)
             }
-            .padding(.horizontal, Kiln.Space.l)
-            .padding(.vertical, Kiln.Space.l + Kiln.Space.s)
+            .padding(.horizontal, Kiln.Space.xl)
+            .padding(.vertical, Kiln.Space.xl + Kiln.Space.m)
             .frame(maxWidth: Kiln.Layout.dropCardMaxWidth)
             .background {
                 ZStack {
                     RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
                         .fill(.regularMaterial)
                     RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
-                        .fill(isTargeted ? Kiln.Palette.accentWash : Color.clear)
+                        .fill(isTargeted ? Kiln.Palette.firingWash : Color.clear)
                 }
             }
             .emberGlow(cornerRadius: Kiln.Radius.modal)
@@ -62,7 +62,7 @@ struct EmptyDropView: View {
             .accessibilityLabel("Drop a folder to teach a model about you")
             .accessibilityHint("Press Command N to start blank")
             .accessibilityAddTraits(.isButton)
-            .padding(Kiln.Space.l)
+            .padding(Kiln.Space.xl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

@@ -9,7 +9,7 @@ struct ReadyStageView: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.l) {
             StageHeader(
                 title: project.name,
                 subtitle: "No folder yet. Drop one here to begin.",
@@ -21,16 +21,16 @@ struct ReadyStageView: View {
                 dropCard
                 Spacer(minLength: 0)
             }
-            .padding(.top, Kiln.Space.s)
+            .padding(.top, Kiln.Space.m)
 
             Spacer(minLength: 0)
         }
-        .padding(Kiln.Space.l)
+        .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var dropCard: some View {
-        VStack(spacing: Kiln.Space.s) {
+        VStack(spacing: Kiln.Space.m) {
             DropHintIcon()
             Text("Drop a folder")
                 .font(Kiln.Font.title)
@@ -41,8 +41,8 @@ struct ReadyStageView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
         }
-        .padding(.horizontal, Kiln.Space.l)
-        .padding(.vertical, Kiln.Space.l)
+        .padding(.horizontal, Kiln.Space.xl)
+        .padding(.vertical, Kiln.Space.xl)
         .frame(maxWidth: 420)
         .background {
             ZStack {
@@ -50,7 +50,7 @@ struct ReadyStageView: View {
                     .fill(.regularMaterial)
                 if isTargeted {
                     RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                        .fill(Kiln.Palette.accentWash)
+                        .fill(Kiln.Palette.firingWash)
                 }
             }
         }

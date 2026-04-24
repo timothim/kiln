@@ -54,7 +54,7 @@ struct SidebarView: View {
                     .font(Kiln.Font.mono)
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, Kiln.Space.s)
+            .padding(.horizontal, Kiln.Space.m)
             .padding(.vertical, Kiln.Space.xs + 2)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
