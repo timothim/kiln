@@ -145,6 +145,7 @@ public final class SubprocessTrainingRunner: TrainingRunner, @unchecked Sendable
             do {
                 try process.run()
             } catch {
+                stderrHandle.readabilityHandler = nil
                 continuation.finish(throwing: TrainingError.launchFailed(message: error.localizedDescription))
             }
         }

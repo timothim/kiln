@@ -193,12 +193,13 @@ final class AppModel {
     /// package is shipped alongside.
     private static func trainerPackageDir() -> URL {
         let fm = FileManager.default
+        let cwdProbe = URL(fileURLWithPath: fm.currentDirectoryPath)
+            .appendingPathComponent("packages/kiln_trainer")
         let candidates: [URL] = [
             Bundle.main.bundleURL
                 .deletingLastPathComponent()
                 .appendingPathComponent("packages/kiln_trainer"),
-            URL(fileURLWithPath: fm.currentDirectoryPath)
-                .appendingPathComponent("packages/kiln_trainer")
+            cwdProbe
         ]
         for url in candidates where fm.fileExists(atPath: url.path) {
             return url
@@ -214,6 +215,6 @@ final class AppModel {
             }
             cursor.deleteLastPathComponent()
         }
-        return candidates.last!
+        return cwdProbe
     }
 }
