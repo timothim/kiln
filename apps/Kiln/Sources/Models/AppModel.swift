@@ -21,6 +21,9 @@ final class AppModel {
     /// session. Lives on AppModel so the sheet doesn't have to
     /// re-derive it on every render.
     var voiceCoachInput: VoiceCoachInput?
+    /// Audit C3: when non-nil, the Deep Curation sheet is presented
+    /// over the Dataset Doctor.
+    var deepCurationModel: DeepCurationModel?
 
     /// Saved-voice library — drives the sidebar's bottom-pinned selector.
     /// Always non-nil so the selector has something to bind to at launch.
@@ -95,18 +98,21 @@ final class AppModel {
     private let ollamaExporterFactory: (@MainActor () -> OllamaExporter)?
     private let ollamaClientFactory: (@MainActor () -> OllamaClient)?
     private let voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)?
+    private let deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)?
 
     init(
         trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
         ollamaExporterFactory: (@MainActor () -> OllamaExporter)? = nil,
         ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil,
         voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)? = nil,
+        deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)? = nil,
         voicesProvider: (any VoicesProvider)? = nil
     ) {
         self.trainingRunnerFactory = trainingRunnerFactory
         self.ollamaExporterFactory = ollamaExporterFactory
         self.ollamaClientFactory = ollamaClientFactory
         self.voiceCoachRunnerFactory = voiceCoachRunnerFactory
+        self.deepCurationRunnerFactory = deepCurationRunnerFactory
         if let voicesProvider {
             self.voicesModel = VoicesModel(provider: voicesProvider)
         } else {
@@ -354,6 +360,37 @@ final class AppModel {
         return VoiceCoachInput(styleSignature: sig, sampleCompletions: [])
     }
 
+    // MARK: - Deep Curation (Audit C3)
+
+    /// Open the Deep Curation sheet for the given project. Builds a
+    /// dry-run request against the project's prepared corpus; the
+    /// sidecar recognises ``--dry-run`` and produces a deterministic
+    /// preview without burning Anthropic minutes (the real Managed
+    /// Agent path is opt-in via the same UI once the user toggles
+    /// off ``--dry-run`` in v2). No-op without a prepared dataset.
+    func openDeepCuration(for projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let datasetURL = projects[idx].preparedDatasetURL else { return }
+        let runDir = datasetURL.deletingLastPathComponent()
+        let request = DeepCurationRequest(
+            corpusPath: datasetURL,
+            outputPath: runDir.appendingPathComponent("curated.jsonl"),
+            reportPath: runDir.appendingPathComponent("curate-report.json"),
+            dryRun: true
+        )
+        let apiKey = (try? cloudSettings.loadAPIKey()) ?? nil
+        let model = DeepCurationModel(
+            runner: resolveDeepCurationRunner(),
+            request: request,
+            apiKey: apiKey
+        )
+        deepCurationModel = model
+    }
+
+    func closeDeepCuration() {
+        deepCurationModel = nil
+    }
+
     // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
@@ -393,6 +430,14 @@ final class AppModel {
         }
         let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
         return SubprocessVoiceCoachRunner(launcher: launcher)
+    }
+
+    private func resolveDeepCurationRunner() -> DeepCurationRunner {
+        if let factory = deepCurationRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessDeepCurationRunner(launcher: launcher)
     }
 
     /// Best-effort resolver for a llama.cpp checkout. Respects the

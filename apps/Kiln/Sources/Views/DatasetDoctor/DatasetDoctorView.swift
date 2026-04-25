@@ -8,6 +8,21 @@ struct DatasetDoctorView: View {
     let report: IngestReport
     let onContinue: () -> Void
     let onReset: () -> Void
+    /// Audit C3: when non-nil, a "Run Deep Curation" CTA appears in
+    /// the action row. Closure opens the Managed-Agent sheet via
+    /// ``AppModel.openDeepCuration(for:)``.
+    var onOpenDeepCuration: (() -> Void)? = nil
+    var deepCurationModel: DeepCurationModel? = nil
+    var onCloseDeepCuration: (() -> Void)? = nil
+
+    private var deepCurationIsPresented: Binding<Bool> {
+        Binding(
+            get: { deepCurationModel != nil },
+            set: { newValue in
+                if !newValue { onCloseDeepCuration?() }
+            }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.l) {
@@ -26,6 +41,14 @@ struct DatasetDoctorView: View {
         }
         .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: deepCurationIsPresented) {
+            if let model = deepCurationModel {
+                DeepCurationSheet(
+                    model: model,
+                    onClose: { onCloseDeepCuration?() }
+                )
+            }
+        }
     }
 
     private var subtitle: String {
@@ -92,9 +115,18 @@ struct DatasetDoctorView: View {
     }
 
     private var ctaRow: some View {
-        HStack {
+        HStack(spacing: Kiln.Space.sm) {
             Button("Drop another folder", action: onReset)
             Spacer()
+            if let onOpenDeepCuration {
+                Button(action: onOpenDeepCuration) {
+                    Label("Run Deep Curation", systemImage: "wand.and.stars")
+                        .font(Kiln.Font.body)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .accessibilityHint("Run a Claude Opus Managed Agent over your corpus to remove forwarded threads, copy-pasted external content, and voice-inconsistent samples.")
+            }
             Button(action: onContinue) {
                 Label("Continue to training", systemImage: "arrow.right")
                     .font(Kiln.Font.body.weight(.semibold))

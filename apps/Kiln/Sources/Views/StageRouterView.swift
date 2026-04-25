@@ -51,7 +51,16 @@ struct StageRouterView: View {
                         model.resetPrepare()
                         model.updateStage(of: project.id, to: .readyToDrop)
                     }
-                }
+                },
+                // Audit C3: gated on apiKeyConfigured. The dry-run path
+                // (what we currently ship) does not actually call
+                // Anthropic, but having a key configured is the user's
+                // explicit opt-in signal for any cloud-shaped feature.
+                onOpenDeepCuration: model.cloudSettings.apiKeyConfigured
+                    ? { model.openDeepCuration(for: project.id) }
+                    : nil,
+                deepCurationModel: model.deepCurationModel,
+                onCloseDeepCuration: { model.closeDeepCuration() }
             )
         case .training:
             TrainStageView(

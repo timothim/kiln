@@ -141,4 +141,36 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertNil(app.voiceCoachModel)
         XCTAssertNil(app.voiceCoachInput)
     }
+
+    // MARK: - Audit C3 regression: Deep Curation open / close lifecycle
+
+    func test_openDeepCuration_constructs_model_with_dryrun_request() {
+        let app = AppModel()
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kiln-c3-test-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let datasetURL = dir.appendingPathComponent("train.jsonl")
+        FileManager.default.createFile(atPath: datasetURL.path, contents: Data("{}\n".utf8))
+
+        var project = Project(name: "Curation test", stage: .preparing)
+        project.preparedDatasetURL = datasetURL
+        app.projects = [project]
+        XCTAssertNil(app.deepCurationModel)
+
+        app.openDeepCuration(for: project.id)
+        XCTAssertNotNil(app.deepCurationModel, "openDeepCuration should populate the model")
+        // We can't easily peek the request without exposing it, but
+        // the close path must clear cleanly:
+        app.closeDeepCuration()
+        XCTAssertNil(app.deepCurationModel)
+    }
+
+    func test_openDeepCuration_is_noop_without_prepared_dataset() {
+        let app = AppModel()
+        let project = Project(name: "Empty", stage: .preparing)   // no prepared dataset
+        app.projects = [project]
+        app.openDeepCuration(for: project.id)
+        XCTAssertNil(app.deepCurationModel)
+    }
 }
