@@ -64,12 +64,7 @@ struct GrowingModelPanelView: View {
             }
 
             if state == .completed {
-                Text("Congrats — your model has found its voice.")
-                    .font(Kiln.Font.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, Kiln.Space.xs)
-                    .transition(.opacity)
+                completionBanner
             }
 
             Spacer(minLength: 0)
@@ -91,6 +86,31 @@ struct GrowingModelPanelView: View {
                     .animation(Kiln.Motion.standard, value: currentStep)
             }
         }
+    }
+
+    // Firing-moment completion banner. Stylization done = emotional payoff of
+    // M6; the caption-weight version read undersold. Amber is sanctioned here
+    // per DESIGN.md (firing moment, same family as TrainingProgressCapsule).
+    private var completionBanner: some View {
+        HStack(spacing: Kiln.Space.xs) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: Kiln.Icon.small))
+                .foregroundStyle(Kiln.Palette.firing)
+            Text("Congrats — your model has found its voice.")
+                .font(Kiln.Font.body.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, Kiln.Space.m)
+        .padding(.vertical, Kiln.Space.xs)
+        .frame(maxWidth: .infinity)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Kiln.Palette.firingWash)
+        }
+        .padding(.top, Kiln.Space.xs)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -187,12 +207,17 @@ private struct GrowingModelPromptCard: View {
 private struct StylizationGauge: View {
     let score: Double
 
+    @State private var lastAnnouncedMilestone: Int = 0
+
     static let barWidth: CGFloat = 80
+    static let milestones: [Int] = [25, 50, 75, 100]
+
     private var clamped: Double { max(0, min(100, score)) }
+    private var pct: Int { Int(clamped) }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Kiln.Space.xxs) {
-            Text("\(Int(clamped))%")
+            Text("\(pct)%")
                 .font(Kiln.Font.label)
                 .kerning(0.44)
                 .foregroundStyle(.secondary)
@@ -209,7 +234,29 @@ private struct StylizationGauge: View {
             }
             .frame(width: Self.barWidth, height: Kiln.Space.xxs)
         }
-        .accessibilityLabel("Stylization \(Int(clamped)) percent")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Stylization")
+        .accessibilityValue(accessibilityValueText)
+        .onChange(of: pct) { _, newValue in
+            announceIfMilestoneCrossed(newValue)
+        }
+    }
+
+    private var accessibilityValueText: String {
+        switch pct {
+        case 100: return "100 percent — fully stylized"
+        case 75...: return "\(pct) percent — nearly fully stylized"
+        case 50...: return "\(pct) percent — halfway, your voice is emerging"
+        case 25...: return "\(pct) percent — building"
+        default:   return "\(pct) percent — starting"
+        }
+    }
+
+    private func announceIfMilestoneCrossed(_ newValue: Int) {
+        guard let milestone = Self.milestones.last(where: { newValue >= $0 }),
+              milestone > lastAnnouncedMilestone else { return }
+        lastAnnouncedMilestone = milestone
+        AccessibilityNotification.Announcement("Stylization reached \(milestone) percent").post()
     }
 }
 

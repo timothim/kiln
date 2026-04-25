@@ -49,19 +49,39 @@ enum Register: String, CaseIterable, Equatable {
 
 // MARK: - Style Signature Card
 
+enum StyleSignatureState: Equatable {
+    case loading
+    case ready(StyleSignature)
+}
+
 /// Shareable summary of the user's voice, produced by the style-extractor at
 /// the end of training. Exportable as PNG via `StyleSignatureExporter`.
 ///
 /// The on-disk PNG should look exactly like `CardArt` — the outer
 /// `StyleSignatureCardView` adds the export button as chrome, not content.
+/// During extraction (M7) the card shows a skeleton so the panel doesn't pop
+/// in from nothing.
 struct StyleSignatureCardView: View {
-    let signature: StyleSignature
+    let state: StyleSignatureState
 
     @State private var exportResult: ExportResult?
 
+    init(state: StyleSignatureState) {
+        self.state = state
+    }
+
+    init(signature: StyleSignature) {
+        self.init(state: .ready(signature))
+    }
+
+    private var isReady: Bool {
+        if case .ready = state { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .trailing, spacing: Kiln.Space.m) {
-            StyleSignatureCardArt(signature: signature)
+            cardSurface
 
             HStack(spacing: Kiln.Space.xs) {
                 if let message = exportResult?.message {
@@ -80,18 +100,123 @@ struct StyleSignatureCardView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
+                .disabled(!isReady)
                 .accessibilityLabel("Export style signature as PNG")
             }
         }
         .padding(Kiln.Space.l)
         .animation(Kiln.Motion.standard, value: exportResult)
+        .animation(Kiln.Motion.standard, value: isReady)
+    }
+
+    @ViewBuilder
+    private var cardSurface: some View {
+        switch state {
+        case .loading:
+            StyleSignatureSkeletonCard()
+                .transition(.opacity)
+        case let .ready(signature):
+            StyleSignatureCardArt(signature: signature)
+                .transition(.opacity)
+        }
     }
 
     @MainActor
     private func exportTapped() async {
+        guard case let .ready(signature) = state else { return }
         let result = StyleSignatureExporter.exportPNG(signature: signature)
         withAnimation(Kiln.Motion.standard) {
             exportResult = result
+        }
+    }
+}
+
+// MARK: - Skeleton card
+
+/// Placeholder art shown while the style extractor runs. Geometry mirrors
+/// `StyleSignatureCardArt` so the transition is a crossfade, not a reflow.
+private struct StyleSignatureSkeletonCard: View {
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                skeletonBar(width: 140, height: 28)
+                Spacer(minLength: 0)
+                skeletonBar(width: 100, height: 11)
+            }
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+                skeletonLine
+                skeletonLine
+                skeletonBar(width: 380, height: 13)
+            }
+            Divider().opacity(0.4)
+            skeletonSection(labelWidth: 150, chipWidths: [76, 110, 64, 88, 120, 54, 90])
+            Divider().opacity(0.4)
+            skeletonSection(labelWidth: 180, chipWidths: [180, 220, 160, 200])
+            Divider().opacity(0.4)
+            HStack(alignment: .bottom, spacing: Kiln.Space.l) {
+                VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+                    skeletonBar(width: 110, height: 11)
+                    skeletonBar(width: 96, height: 40)
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: Kiln.Space.xs) {
+                    skeletonBar(width: 70, height: 11)
+                    skeletonBar(width: 88, height: 24)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack {
+                Spacer()
+                skeletonBar(width: 110, height: 11)
+            }
+        }
+        .padding(Kiln.Space.l)
+        .frame(width: StyleSignatureCardArt.cardWidth,
+               height: StyleSignatureCardArt.cardHeight,
+               alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
+                .fill(.regularMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+        .opacity(pulse ? 1.0 : 0.55)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Building your style signature")
+    }
+
+    private var skeletonLine: some View {
+        RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+            .frame(maxWidth: .infinity)
+            .frame(height: 13)
+    }
+
+    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+            .frame(width: width, height: height)
+    }
+
+    private func skeletonSection(labelWidth: CGFloat, chipWidths: [CGFloat]) -> some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+            skeletonBar(width: labelWidth, height: 11)
+            FlowLayout(spacing: Kiln.Space.xs) {
+                ForEach(chipWidths.indices, id: \.self) { i in
+                    Capsule()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: chipWidths[i], height: 20)
+                }
+            }
         }
     }
 }
@@ -352,6 +477,11 @@ private struct FlowLayout: Layout {
 
 #Preview("Card — minimal (Alex)") {
     StyleSignatureCardView(signature: .mockAlex)
+        .frame(width: 720)
+}
+
+#Preview("Card — loading skeleton") {
+    StyleSignatureCardView(state: .loading)
         .frame(width: 720)
 }
 

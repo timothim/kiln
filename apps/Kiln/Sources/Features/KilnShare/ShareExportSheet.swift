@@ -21,6 +21,7 @@ struct ShareIncludeOptions: Equatable {
 
 struct ShareBundleSummary: Equatable {
     let filename: String
+    let bundleURL: URL            // for "Reveal in Finder" from the success block
     let sizeBytes: Int
     let sha256Prefix: String      // first 12 chars, pretty-formatted
 }
@@ -132,6 +133,18 @@ struct ShareExportSheet: View {
                     .foregroundStyle(Kiln.Palette.firing)
                 Text("Exported \(result.filename)")
                     .font(Kiln.Font.body.weight(.semibold))
+                Spacer(minLength: 0)
+                Button {
+                    revealInFinder(result.bundleURL)
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                        .font(Kiln.Font.label)
+                        .kerning(0.44)
+                        .textCase(.uppercase)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .accessibilityLabel("Reveal bundle in Finder")
             }
             VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 detailRow(label: "Size",   value: Self.formatBytes(result.sizeBytes))
@@ -291,6 +304,10 @@ struct ShareExportSheet: View {
         }
     }
 
+    private func revealInFinder(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
     private static func importCommand(filename: String) -> String {
         "kiln import ~/Downloads/\(filename)"
     }
@@ -328,6 +345,8 @@ private struct SectionLabel: View {
             try? await Task.sleep(for: .seconds(1))
             return ShareBundleSummary(
                 filename: "tim-drafts.kiln",
+                bundleURL: URL(fileURLWithPath: NSHomeDirectory())
+                    .appendingPathComponent("Downloads/tim-drafts.kiln"),
                 sizeBytes: 38 * 1024 * 1024,
                 sha256Prefix: "a1f3c29be504"
             )

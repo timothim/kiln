@@ -7,7 +7,7 @@ struct TrainStageView: View {
     let project: Project
     var model: TrainModel?
     var exportModel: ExportModel?
-    let onStart: () -> Void
+    let onStart: (VoiceSplit?) -> Void
     let onCancel: () -> Void
     let onContinue: () -> Void
     let onReset: () -> Void
@@ -68,27 +68,38 @@ struct TrainStageView: View {
 
 private struct TrainingEmptyView: View {
     let project: Project
-    let onStart: () -> Void
+    let onStart: (VoiceSplit?) -> Void
+
+    @State private var split: VoiceSplit
+
+    init(project: Project, onStart: @escaping (VoiceSplit?) -> Void) {
+        self.project = project
+        self.onStart = onStart
+        self._split = State(initialValue: Self.initialSplit(for: project))
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.l) {
-            StageHeader(
-                title: project.name,
-                subtitle: "Ready when you are.",
-                stage: project.stage
-            )
+        ScrollView {
+            VStack(alignment: .leading, spacing: Kiln.Space.l) {
+                StageHeader(
+                    title: project.name,
+                    subtitle: "Ready when you are.",
+                    stage: project.stage
+                )
 
-            HStack {
-                Spacer(minLength: 0)
-                card
-                Spacer(minLength: 0)
+                VoiceSplitterView(split: $split)
+                    .padding(.top, Kiln.Space.xs)
+
+                HStack {
+                    Spacer(minLength: 0)
+                    card
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, Kiln.Space.m)
             }
-            .padding(.top, Kiln.Space.m)
-
-            Spacer(minLength: 0)
+            .padding(Kiln.Space.xl)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(Kiln.Space.xl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var card: some View {
@@ -106,7 +117,7 @@ private struct TrainingEmptyView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
 
-            Button(action: onStart) {
+            Button(action: { onStart(split) }) {
                 Label("Teach", systemImage: "flame")
                     .font(Kiln.Font.body.weight(.semibold))
                     .foregroundStyle(.white)
@@ -130,6 +141,22 @@ private struct TrainingEmptyView: View {
                 .fill(.regularMaterial)
         )
         .emberGlow(cornerRadius: Kiln.Radius.card, glowRadius: 20)
+    }
+
+    /// Seeds the splitter. Persisted `project.voiceSplit` wins; otherwise we
+    /// synthesize a single-persona default so the splitter isn't an empty
+    /// shell during demos. The label leans on the corpus folder name so the
+    /// copy reads "oof, that's mine" rather than a generic placeholder.
+    private static func initialSplit(for project: Project) -> VoiceSplit {
+        if let existing = project.voiceSplit {
+            return existing
+        }
+        let trimmedFolder = project.folderName.flatMap { $0.isEmpty ? nil : $0 }
+        let label = trimmedFolder ?? "Your writing"
+        let samples = project.keptChunks ?? project.totalChunks ?? 0
+        return VoiceSplit(
+            personas: [Persona(label: label, sampleCount: samples, selected: true)]
+        )
     }
 }
 
