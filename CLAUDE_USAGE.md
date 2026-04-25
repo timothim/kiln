@@ -344,3 +344,44 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 ---
 
 *This document is a contract with the reader: whenever a number is unfilled above, it means that milestone hasn't closed yet, not that the number is being hidden. If a section reads thin at submission, treat it as a measurement of how much that part of the product fell short — not of how Claude was used. Both are legitimate feedback.*
+
+---
+
+## 10. Saturday final push — runtime Opus features
+
+The Saturday before submission added six more product surfaces that call Opus 4.7 (or run a Managed Agent) at runtime, directly from the shipped app. Every one of them is **opt-in**, off by default, surfaced under **Settings → Cloud features**. Each cloud-Opus feature carries a prominent "Powered by Claude Opus 4.7" badge in the UI so the user always knows when their data is leaving the laptop.
+
+### 10.1 Voice Coach (PR #19)
+
+After Ollama export succeeds, a "Get Voice Report" CTA in `CompleteStageView` opens `VoiceCoachView`, which calls Claude Opus 4.7 (or local Qwen2.5 via Ollama) for a 150-word markdown report covering dominant traits, contrast vs base Qwen, watch-out areas where voice may drift, and corpus suggestions for the next training round. Local-mode toggle rebadges to "Running locally with qwen2.5:7b". Real Opus call verified end-to-end against the live API. Cost per call < $0.05 at the 500-output-token cap.
+
+### 10.2 Kiln voice as MCP server (PR #20)
+
+Stdio MCP server using the official `mcp` Python SDK. One tool — `write_in_user_voice(prompt, max_tokens)` — that proxies to local Ollama running the trained model. Claude.app and Claude Code spawn it via their standard `mcp` config; the user pastes the JSON snippet from the Settings UI. **The user's voice never leaves the machine** — only Claude.app's prompt request crosses the parent↔child boundary, and that runs through Claude.app itself, not Kiln.
+
+### 10.3 Agent-driven ingestion with sub-agent orchestration (PR #21)
+
+New "Connect your sources" entry point alongside drag-drop. The orchestrator reads from each enabled source (Local Documents working, Apple Notes via AppleScript fallback, Gmail/Notion as v2 placeholders), aggregates, dedups, then asks Opus 4.7 to filter to the user's intent. Live log streams `agent_thinking` / `subagent_spawned` / `sample_found` / `agent_decision` / `completion` events as they arrive. Local-mode falls back to a deterministic intent-keyword filter.
+
+### 10.4 Deep Curation — flagship Managed Agent (PR #22)
+
+The canonical Managed Agent usage in the product. New `managed-agents/corpus-curator/` agent (Opus 4.7 + `agent_toolset_20260401`) reviews every sample in the user's corpus over multiple turns and produces a structured cleanup report — per-sample keep/remove/flag with reasons + aggregate statistics — written to `curated.jsonl` + `report.json` via canonical begin/end markers. **Cloud-only by design**: the multi-turn long-running session is the whole point of Managed Agents vs single Opus calls; no local model can match that. Triggered from Dataset Doctor as the second-class CTA next to the existing mechanical filters.
+
+### 10.5 Training Advisor (PR #23)
+
+During training, an Opus 4.7 helper polls the loss curve + sample completions at each checkpoint and emits a one-line observation. The `TrainingAdvisorPanel` renders the streaming observations under the loss chart with a "Powered by Claude Opus 4.7" badge. Local-mode rebadges to "Running locally with Qwen2.5".
+
+### 10.6 Behind the Scenes transparency page (PR #24)
+
+Static page accessible from Settings → About Kiln. Documents the four layers of Opus integration in Kiln (build-time multi-agent code generation, distilled classifiers, runtime Opus features, the local-first promise). The hackathon judging story made legible to a curious user; not strictly a product feature but critical for the submission narrative.
+
+### 10.7 The discipline
+
+Every cloud feature here meets four constraints:
+
+1. **Opt-in.** Off by default. The user flips a toggle in Settings before anything reaches Anthropic.
+2. **Local fallback where viable.** Every feature except Deep Curation has a local Qwen2.5 / heuristic mode.
+3. **Visible badge.** "Powered by Claude Opus 4.7" sits on the surface so the user always knows when cloud Opus is involved.
+4. **Honest documentation.** Each feature's local fallback, scope cuts, and known limitations are documented in the PR body and in this file.
+
+Together with the build-time Opus story (§5) and the existing four Managed Agents (§6), Kiln now has **four layers** of Opus integration: Opus-as-teacher (offline distillation), Opus-as-runtime-advisor (cloud features above), Opus-as-Managed-Agent (Deep Curation), and Opus-as-MCP-consumer (Claude.app calling Kiln's MCP server to write in the user's voice). All four ship in the same `.app` bundle.
