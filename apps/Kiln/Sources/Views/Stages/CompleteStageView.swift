@@ -1,3 +1,4 @@
+import KilnCore
 import SwiftUI
 
 /// Stage 3 — training complete. Confident header, stat grid, the built-in
@@ -9,6 +10,11 @@ struct CompleteStageView: View {
     var chatModel: ChatModel?
     let onOpenChat: () -> Void
     let onCloseChat: () -> Void
+    /// Optional Voice Coach surface (Saturday Phase 1). Nil when the
+    /// user hasn't enabled the Cloud features section in Settings;
+    /// when non-nil, a "Get Voice Report" CTA appears next to the
+    /// Share button.
+    var onOpenVoiceCoach: (() -> Void)? = nil
 
     @State private var isShareSheetPresented = false
 
@@ -163,6 +169,19 @@ struct CompleteStageView: View {
             .controlSize(.regular)
             .disabled(project.trainingReport == nil)
             .accessibilityHint("Package this voice as a .kiln bundle you can share.")
+
+            if let onOpenVoiceCoach {
+                Button {
+                    onOpenVoiceCoach()
+                } label: {
+                    Label("Get Voice Report", systemImage: "wand.and.stars")
+                        .padding(.horizontal, Kiln.Space.xs)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(project.trainingReport == nil)
+                .accessibilityHint("Generate a 150-word Opus report on your trained voice.")
+            }
 
             if project.trainingReport == nil {
                 Text("Finish training to enable sharing.")

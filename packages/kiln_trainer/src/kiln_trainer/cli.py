@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_export_parser(sub)
     _build_classify_parser(sub)
     _build_embed_search_parser(sub)
+    _build_voice_coach_parser(sub)
 
     return parser
 
@@ -305,6 +306,51 @@ def _build_embed_search_parser(sub: argparse._SubParsersAction) -> None:
     )
 
 
+def _build_voice_coach_parser(sub: argparse._SubParsersAction) -> None:
+    """``voice-coach`` — Opus 4.7 (or local Qwen) post-export voice analyst.
+
+    Saturday Phase 1. The Swift caller passes ``{style_signature,
+    sample_completions}`` over stdin or via ``--input-file`` and
+    receives a 150-word markdown report on the user's voice.
+
+    Cloud mode (``--mode cloud``) needs ``ANTHROPIC_API_KEY`` in env;
+    local mode (``--mode local``) talks to the Ollama daemon at
+    ``127.0.0.1:11434`` and uses ``--local-model`` (default
+    ``qwen2.5:7b``) — the runtime equivalent for users who don't want
+    to send their voice signature to a third party."""
+    p = sub.add_parser(
+        "voice-coach",
+        help="Opus / local Qwen voice analyst for the post-export report",
+        description=(
+            "Generate a 150-word markdown report on the user's voice. "
+            "Cloud mode uses claude-opus-4-7; local mode uses Ollama."
+        ),
+    )
+    p.add_argument(
+        "--mode",
+        required=True,
+        choices=["cloud", "local"],
+        help="cloud → Anthropic SDK / claude-opus-4-7; local → Ollama daemon",
+    )
+    p.add_argument(
+        "--input-file",
+        type=Path,
+        default=None,
+        help="JSON {style_signature, sample_completions}; reads stdin if omitted",
+    )
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=500,
+        help="upper bound on the markdown length (default 500)",
+    )
+    p.add_argument(
+        "--local-model",
+        default="qwen2.5:7b",
+        help="Ollama model id used when --mode local (default qwen2.5:7b)",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -348,6 +394,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import embed_search as embed_search_cmd
 
         return embed_search_cmd.run(args)
+    if args.command == "voice-coach":
+        from kiln_trainer.commands import voice_coach as voice_coach_cmd
+
+        return voice_coach_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here
