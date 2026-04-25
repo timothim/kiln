@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_train_parser(sub)
     _build_sample_parser(sub)
     _build_sample_batch_parser(sub)
+    _build_sample_compare_parser(sub)
     _build_export_parser(sub)
 
     return parser
@@ -148,6 +149,46 @@ def _build_sample_batch_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--generator-entry", default=None, help=argparse.SUPPRESS)
 
 
+def _build_sample_compare_parser(sub: argparse._SubParsersAction) -> None:
+    """``sample-compare`` — Voice Mirror's three-variant side-by-side generation.
+
+    Emits one ``generation`` event per variant (``prompt_id=base|sft|sftdpo``)
+    followed by a single ``done(stage=generation)``. Three cold-load
+    subprocesses under the hood; see ``scripts/verify-mlx-hotswap.py`` for the
+    rationale behind not sharing a single in-process model.
+    """
+    from kiln_trainer.commands.sample_compare import parse_variant
+
+    p = sub.add_parser(
+        "sample-compare",
+        help="two- or three-variant comparison for Voice Mirror",
+        description=(
+            "Run the same prompt through base / SFT / SFT+DPO model variants "
+            "and emit one generation event per variant for Voice Mirror."
+        ),
+    )
+    p.add_argument("--model", required=True)
+    p.add_argument("--prompt", required=True, help='prompt text, or "-" to read from stdin')
+    p.add_argument(
+        "--variant",
+        action="append",
+        type=parse_variant,
+        metavar="TAG[:ADAPTER_PATH]",
+        help=(
+            "Repeatable. TAG is one of base/sft/sftdpo. Adapter-backed tags "
+            "require a path (sft:/path/to/adapter.safetensors); base takes no "
+            "path. At least one --variant is required."
+        ),
+    )
+    p.add_argument("--max-tokens", type=int, default=200)
+    p.add_argument("--temp", type=float, default=0.7)
+    p.add_argument("--top-p", type=float, default=0.9)
+    p.add_argument("--seed", type=int, default=42)
+    # Hidden test seams.
+    p.add_argument("--generator-module", default="mlx_lm.generate", help=argparse.SUPPRESS)
+    p.add_argument("--generator-entry", default=None, help=argparse.SUPPRESS)
+
+
 def _build_export_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(
         "export",
@@ -196,6 +237,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import sample_batch as sample_batch_cmd
 
         return sample_batch_cmd.run(args)
+    if args.command == "sample-compare":
+        from kiln_trainer.commands import sample_compare as sample_compare_cmd
+
+        return sample_compare_cmd.run(args)
     if args.command == "export":
         from kiln_trainer.commands import export as export_cmd
 

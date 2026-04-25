@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from kiln_trainer import modelfile
+
+
+GOLDEN_PATH = Path(__file__).parent / "fixtures" / "modelfile-qwen25.golden.txt"
 
 
 def test_render_contains_required_blocks() -> None:
@@ -55,6 +60,25 @@ def test_render_honours_parameter_overrides() -> None:
     assert "PARAMETER top_p 0.8" in out
     assert "PARAMETER repeat_penalty 1.15" in out
     assert "PARAMETER num_ctx 8192" in out
+
+
+def test_qwen25_byte_match_golden() -> None:
+    """Qwen2.5 Modelfile output must be byte-identical to the golden fixture.
+
+    M1 T1 (SPEC §9.3) calls out a byte-match assertion so any silent drift in
+    parameter defaults, system-prompt wording, TEMPLATE tokens, or STOP lines
+    surfaces as a regression instead of a subtle model-quality change. The
+    golden was regenerated with `python -c 'from kiln_trainer import modelfile;
+    print(modelfile.render(gguf_filename="./kiln.Q4_K_M.gguf",
+    user_name="Timothée"), end="")'`. To update, regenerate, review the diff,
+    commit the fixture in the same change.
+    """
+    out = modelfile.render(gguf_filename="./kiln.Q4_K_M.gguf", user_name="Timothée")
+    golden = GOLDEN_PATH.read_text(encoding="utf-8")
+    assert out == golden, (
+        "Modelfile drift vs golden — if the change is intentional, regenerate "
+        f"{GOLDEN_PATH.relative_to(Path(__file__).parents[2])} and commit alongside."
+    )
 
 
 def test_render_template_preserves_chatml_structure() -> None:

@@ -6,10 +6,13 @@ import KilnCore
 struct TrainStageView: View {
     let project: Project
     var model: TrainModel?
+    var exportModel: ExportModel?
     let onStart: () -> Void
     let onCancel: () -> Void
     let onContinue: () -> Void
     let onReset: () -> Void
+    let onExport: () -> Void
+    let onDismissExport: () -> Void
 
     var body: some View {
         Group {
@@ -30,8 +33,11 @@ struct TrainStageView: View {
                     TrainingCompletedView(
                         project: project,
                         report: report,
+                        exportModel: exportModel,
                         onContinue: onContinue,
-                        onReset: onReset
+                        onReset: onReset,
+                        onExport: onExport,
+                        onDismissExport: onDismissExport
                     )
                     .transition(Kiln.Motion.stageTransition)
                 case .failed(let error):
@@ -225,8 +231,11 @@ private struct TrainingRunningView: View {
 private struct TrainingCompletedView: View {
     let project: Project
     let report: TrainingReport
+    var exportModel: ExportModel?
     let onContinue: () -> Void
     let onReset: () -> Void
+    let onExport: () -> Void
+    let onDismissExport: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.l) {
@@ -249,6 +258,9 @@ private struct TrainingCompletedView: View {
                     .font(Kiln.Font.caption)
                     .foregroundStyle(.secondary)
             }
+
+            exportSection
+                .frame(maxWidth: 640)
 
             Spacer(minLength: 0)
 
@@ -273,6 +285,142 @@ private struct TrainingCompletedView: View {
         }
         .padding(Kiln.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var exportSection: some View {
+        if let exportModel {
+            switch exportModel.status {
+            case .idle:
+                exportCTA
+            case .running:
+                exportProgressCard(
+                    headline: "Installing your model in Ollama.",
+                    allowRetry: false
+                )
+            case .completed(let modelName):
+                exportCompletedCard(modelName: modelName)
+            case .failed(let message, _):
+                exportFailedCard(message: message)
+            }
+        } else {
+            exportCTA
+        }
+    }
+
+    private var exportCTA: some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+            Text("Install in Ollama")
+                .font(Kiln.Font.label)
+                .kerning(0.44)
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+            HStack(spacing: Kiln.Space.m) {
+                Text("One tap to fuse the adapter, convert to GGUF, and install as an Ollama model.")
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Kiln.Space.m)
+                Button(action: onExport) {
+                    Label("Export to Ollama", systemImage: "square.and.arrow.down.on.square")
+                        .font(Kiln.Font.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Kiln.Space.m)
+                        .padding(.vertical, Kiln.Space.xs)
+                        .background(
+                            RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
+                                .fill(Kiln.Palette.firing)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Export to Ollama")
+            }
+        }
+        .padding(Kiln.Space.m)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .fill(Kiln.Palette.surfaceSunken)
+        }
+    }
+
+    private func exportProgressCard(headline: String, allowRetry: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+            Text(headline)
+                .font(Kiln.Font.body)
+                .foregroundStyle(.primary)
+            if let exportModel {
+                ExportProgressView(progress: exportModel.progress)
+            }
+            if allowRetry {
+                Button("Retry export", action: onExport)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(Kiln.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .fill(Kiln.Palette.surfaceSunken)
+        }
+    }
+
+    private func exportCompletedCard(modelName: String) -> some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+            HStack(spacing: Kiln.Space.xs) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
+                Text("Your model is installed and ready to chat.")
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(.primary)
+            }
+            if let exportModel {
+                ExportProgressView(progress: exportModel.progress)
+            }
+            Text("ollama run \(modelName)")
+                .font(Kiln.Font.mono)
+                .textSelection(.enabled)
+                .padding(.horizontal, Kiln.Space.m)
+                .padding(.vertical, Kiln.Space.xs)
+                .background {
+                    RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                }
+        }
+        .padding(Kiln.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .fill(Kiln.Palette.surfaceSunken)
+        }
+    }
+
+    private func exportFailedCard(message: String) -> some View {
+        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+            HStack(spacing: Kiln.Space.xs) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(Kiln.Palette.danger)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Button("Retry", action: onExport)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Kiln.Palette.firing)
+                Button("Dismiss", action: onDismissExport)
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(Kiln.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                .fill(Kiln.Palette.surfaceSunken)
+        }
     }
 
     private var subtitle: String {
