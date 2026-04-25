@@ -198,27 +198,26 @@ def step_dataset_doctor() -> StepResult:
 
 def step_style_profile() -> StepResult:
     start = time.monotonic()
-    artifact_dir = REPO_ROOT / "distilled" / "style-extractor"
-    # The distilled artifact is a real model file (weights + tokenizer).
-    # Until the component is trained, only README.md is present.
-    weight_file = artifact_dir / "model.safetensors"
-    if not weight_file.exists():
+    # Audit C6 / H5: the distilled style-extractor ships as a
+    # scikit-learn pickle, not the original SPEC §7.2 ``model.safetensors``
+    # phrasing. Pass when the pickle + manifest are both present.
+    artifact_pickle = REPO_ROOT / "packages" / "kiln_trainer" / "artifacts" / "style-regressor.pkl"
+    manifest = REPO_ROOT / "distilled" / "style-extractor" / "manifest.json"
+    if not artifact_pickle.exists() or not manifest.exists():
         return StepResult(
             name="3. Style profile",
             status=STATUS_SKIP,
-            message="style-extractor artifact not shipped (M7/M8)",
+            message="style-extractor pickle or manifest not present — re-run scripts/build_distilled_manifests.py",
             elapsed_s=time.monotonic() - start,
         )
-    # If shipped, also probe the Swift card module — scaffolded today.
-    try:
-        from importlib import import_module
-    except Exception:  # pragma: no cover — importlib is stdlib
-        import_module = None  # type: ignore[assignment]
     return StepResult(
         name="3. Style profile",
         status=STATUS_PASS,
-        message="style-extractor artifact present",
-        evidence=[str(weight_file.relative_to(REPO_ROOT))],
+        message="style-extractor pickle + manifest shipped",
+        evidence=[
+            str(artifact_pickle.relative_to(REPO_ROOT)),
+            str(manifest.relative_to(REPO_ROOT)),
+        ],
         elapsed_s=time.monotonic() - start,
     )
 
@@ -290,21 +289,39 @@ def step_growing_model() -> StepResult:
 
 def step_before_after() -> StepResult:
     start = time.monotonic()
-    candidates = list((REPO_ROOT / "apps/Kiln/Sources").rglob("*BeforeAfter*.swift")) + list(
-        (REPO_ROOT / "apps/Kiln/Sources").rglob("*Compare*.swift")
-    )
-    if not candidates:
+    # Audit C5 / H5: SamplePreviewPanel + SamplePreviewModel were
+    # rewired to the real ``sample-compare`` runner; SampleCompareRunner
+    # ships in KilnCore. Pass when all three are present + the
+    # placeholder ``Sample`` struct is gone.
+    panel = REPO_ROOT / "apps/Kiln/Sources/Views/Detail/SamplePreviewPanel.swift"
+    model = REPO_ROOT / "apps/Kiln/Sources/Models/SamplePreviewModel.swift"
+    runner = REPO_ROOT / "packages/KilnCore/Sources/KilnCore/Sampling/SampleCompareRunner.swift"
+    missing = [p for p in (panel, model, runner) if not p.exists()]
+    if missing:
         return StepResult(
             name="6. Before/After",
             status=STATUS_SKIP,
-            message="split-pane view not built yet (lands with M6)",
+            message=f"missing: {', '.join(p.name for p in missing)}",
+            elapsed_s=time.monotonic() - start,
+        )
+    # Sanity-check that the panel no longer holds the hardcoded fake.
+    panel_text = panel.read_text(encoding="utf-8")
+    if "Pick the one thing you'd regret" in panel_text:
+        return StepResult(
+            name="6. Before/After",
+            status=STATUS_FAIL,
+            message="SamplePreviewPanel still contains hardcoded placeholder text",
             elapsed_s=time.monotonic() - start,
         )
     return StepResult(
         name="6. Before/After",
         status=STATUS_PASS,
-        message=f"{len(candidates)} view(s)",
-        evidence=[str(c.relative_to(REPO_ROOT)) for c in candidates[:2]],
+        message="SamplePreviewModel + SampleCompareRunner wired",
+        evidence=[
+            str(panel.relative_to(REPO_ROOT)),
+            str(model.relative_to(REPO_ROOT)),
+            str(runner.relative_to(REPO_ROOT)),
+        ],
         elapsed_s=time.monotonic() - start,
     )
 

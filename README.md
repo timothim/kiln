@@ -4,7 +4,7 @@
 
 Kiln is a native macOS app that fine-tunes a local LLM to sound like you from a folder of your writing. Corpus prep, LoRA SFT + DPO, fuse, GGUF, Ollama export — fully on your Mac.
 
-![demo](docs/demo/hero.gif)
+> 🎥 Demo recording (3 min) and hero GIF land at `docs/demo/final.mp4` and `docs/demo/hero.gif` ahead of submission.
 
 ## Install
 
@@ -25,9 +25,7 @@ Drop a folder on the Kiln window. Follow the four stages: Ingest → Profile →
 
 ## Architecture
 
-![architecture](docs/architecture/overview.svg)
-
-Three layers:
+The full multi-agent decomposition is rendered inline by GitHub at [`docs/architecture/multi-agent.mmd`](docs/architecture/multi-agent.mmd). Three layers:
 
 - `apps/Kiln` — SwiftUI frontend.
 - `packages/KilnCore` — Swift package (data pipeline, IPC, model lifecycle).
@@ -79,4 +77,4 @@ See [`CLAUDE_USAGE.md`](CLAUDE_USAGE.md) §10 for the full per-feature breakdown
 
 ---
 
-Built during [Built with Opus 4.7](https://claude.com/) — April 2026. Submission: 3-minute demo at `docs/demo/final.mp4`, 100–200 word writeup at `docs/submission/writeup.md`.
+Built during [Built with Opus 4.7](https://claude.com/) — April 2026. Submission: 3-minute demo + 100–200-word writeup land at `docs/demo/final.mp4` and `docs/submission/writeup.md` immediately before submission.
