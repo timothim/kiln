@@ -87,7 +87,7 @@ public final class SubprocessSampleCompareRunner: SampleCompareRunner, @unchecke
                         continuation.finish(throwing: CancellationError())
                         return
                     }
-                    if process.terminationStatus == 0 || process.terminationReason == .uncaughtSignal {
+                    if process.terminationStatus == 0 {
                         continuation.finish()
                     } else {
                         continuation.finish(throwing: SampleCompareError.unexpectedExit(

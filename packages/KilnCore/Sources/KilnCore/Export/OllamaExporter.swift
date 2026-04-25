@@ -72,7 +72,7 @@ public final class SubprocessOllamaExporter: OllamaExporter, @unchecked Sendable
                         continuation.finish(throwing: CancellationError())
                         return
                     }
-                    if process.terminationStatus == 0 || process.terminationReason == .uncaughtSignal {
+                    if process.terminationStatus == 0 {
                         continuation.finish()
                     } else {
                         continuation.finish(throwing: ExportError.unexpectedExit(
