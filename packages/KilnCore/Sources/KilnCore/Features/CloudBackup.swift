@@ -1,12 +1,15 @@
 import Foundation
 
-/// Opt-in cloud backup for `.kiln` bundles. Strictly out of scope for
-/// the hackathon demo per `CLAUDE.md` ("no cloud sync, no telemetry");
-/// scaffolded here as a placeholder so the UI can wire the toggle at
-/// compile time and the surface stays explicitly disabled. Enabling
-/// this feature will require a dedicated `DECISIONS.md` entry spelling
-/// out the provider, on-device encryption, consent flow, and key
-/// custody model. Until then every entry point throws `.disabledByScope`.
+/// Legacy cloud-upload entry point. M9.A delivers *local* encrypted
+/// backup via ``DiskBackupService`` in
+/// ``packages/KilnCore/Sources/KilnCore/Backup/BackupService.swift``;
+/// production callers wanting backup should construct a
+/// ``DiskBackupService`` directly. Cloud upload (iCloud Drive / S3) is
+/// intentionally still out of scope per CLAUDE.md ("no cloud sync, no
+/// telemetry"); the methods below remain disabled until a fresh
+/// `DECISIONS.md` entry spells out provider, on-device encryption,
+/// consent flow, and key custody. ``isImplemented`` therefore stays
+/// false — it tracks *cloud* upload, not local backup.
 public enum CloudBackup {
     public static let isImplemented = false
 
