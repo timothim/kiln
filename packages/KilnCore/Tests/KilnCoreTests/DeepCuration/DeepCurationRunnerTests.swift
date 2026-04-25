@@ -101,4 +101,41 @@ final class DeepCurationRunnerTests: XCTestCase {
         XCTAssertTrue(req.dryRun)
         XCTAssertEqual(req.corpusPath.lastPathComponent, "c.jsonl")
     }
+
+    // MARK: - Cancellation retrofit (Saturday-final, fixup/saturday-cancellation)
+
+    func test_runner_terminates_subprocess_on_stream_break() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-curate-cancel-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("fake-slow-curate.sh")
+        let body = """
+        #!/bin/bash
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        echo '{"event":"agent_thinking","content":"deploying agent"}'
+        sleep 30
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script, argumentPrefix: [],
+            workingDirectory: dir, environment: nil
+        )
+        let runner = SubprocessDeepCurationRunner(launcher: launcher)
+
+        let start = Date()
+        var first: DeepCurationEvent? = nil
+        for try await event in runner.runStreaming(request: sampleRequest(in: dir), apiKey: nil) {
+            first = event
+            break
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertNotNil(first)
+        XCTAssertLessThan(elapsed, 4.0,
+            "deep-curation runner did not honour stream cancellation; took \(elapsed) s")
+    }
 }

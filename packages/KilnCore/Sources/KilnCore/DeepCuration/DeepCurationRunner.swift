@@ -133,8 +133,21 @@ public final class SubprocessDeepCurationRunner: DeepCurationRunner, @unchecked 
             }
 
             continuation.onTermination = { @Sendable _ in
+                // Saturday-final cancellation retrofit: SIGTERM, give the
+                // child a 5 s grace, then SIGKILL if still alive. The
+                // managed-agent path can sit on a long-running Anthropic
+                // session-deploy call; without escalation an early stream
+                // break would block on the full HTTP timeout.
                 producer.cancel()
-                if process.isRunning { process.terminate() }
+                if process.isRunning {
+                    process.terminate()
+                    let deadline = DispatchTime.now() + .seconds(5)
+                    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline) {
+                        if process.isRunning {
+                            kill(process.processIdentifier, SIGKILL)
+                        }
+                    }
+                }
             }
 
             do {
