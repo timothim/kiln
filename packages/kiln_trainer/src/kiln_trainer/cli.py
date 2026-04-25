@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_classify_parser(sub)
     _build_embed_search_parser(sub)
     _build_voice_coach_parser(sub)
+    _build_mcp_serve_parser(sub)
 
     return parser
 
@@ -351,6 +352,30 @@ def _build_voice_coach_parser(sub: argparse._SubParsersAction) -> None:
     )
 
 
+def _build_mcp_serve_parser(sub: argparse._SubParsersAction) -> None:
+    """``mcp-serve`` — Kiln voice as an MCP stdio server (Phase 2).
+
+    Long-running subprocess. Claude.app spawns this via its mcp config
+    and gets a ``write_in_user_voice`` tool that proxies to local
+    Ollama. No cloud in the data path; the only thing that crosses
+    the wire is the prompt arriving from Claude.app's own connection."""
+    p = sub.add_parser(
+        "mcp-serve",
+        help="expose your Kiln voice as an MCP stdio server",
+        description=(
+            "Run an MCP stdio server that exposes one tool: "
+            "write_in_user_voice. Claude.app spawns this as a "
+            "subprocess via its mcp config and the tool proxies to "
+            "your local Ollama daemon running the trained model."
+        ),
+    )
+    p.add_argument(
+        "--voice-name",
+        default=None,
+        help="Ollama model id to proxy (default: $KILN_VOICE_NAME or kiln-tim)",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -398,6 +423,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import voice_coach as voice_coach_cmd
 
         return voice_coach_cmd.run(args)
+    if args.command == "mcp-serve":
+        from kiln_trainer.commands import mcp_serve as mcp_serve_cmd
+
+        return mcp_serve_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here
