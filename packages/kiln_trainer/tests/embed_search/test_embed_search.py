@@ -129,6 +129,70 @@ def test_missing_corpus_file_emits_error(tmp_path):
     assert any(e["event"] == "error" and e["code"] == "data_invalid" for e in events)
 
 
+def test_malformed_jsonl_line_emits_recoverable_error_and_continues(tmp_path):
+    """Verifier T3 from PR #17: a single malformed line shouldn't crash
+    the subcommand or skip the terminal ``done`` event."""
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "r1", "text": "alpha"}),
+                "{not valid json",  # malformed
+                json.dumps({"request_id": "r2", "text": "beta"}),
+            ]
+        )
+    )
+    proc = _run([
+        "embed-search",
+        "--query", "alpha",
+        "--corpus-file", str(corpus),
+        "--top-k", "5",
+        "--embedder", "fake-hash",
+    ])
+    assert proc.returncode == 0
+    events = _events_from_stdout(proc.stdout)
+    errs = [e for e in events if e["event"] == "error"]
+    assert len(errs) == 1
+    assert errs[0]["code"] == "data_invalid"
+    assert errs[0]["recoverable"] is True
+    classifications = [e for e in events if e["event"] == "classification"]
+    # 2 valid rows produced 2 classifications; malformed row was skipped.
+    assert len(classifications) == 2
+    assert events[-1]["event"] == "done"
+
+
+def test_empty_text_rows_filtered_silently(tmp_path):
+    """Verifier T4 from PR #17: empty-text rows are dropped before the
+    embedder sees them so they don't pollute top-K with noise."""
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "r1", "text": "real content here"}),
+                json.dumps({"request_id": "r2", "text": "  "}),
+                json.dumps({"request_id": "r3", "text": ""}),
+                json.dumps({"request_id": "r4", "text": "more real content"}),
+            ]
+        )
+    )
+    proc = _run([
+        "embed-search",
+        "--query", "anything",
+        "--corpus-file", str(corpus),
+        "--top-k", "5",
+        "--embedder", "fake-hash",
+    ])
+    assert proc.returncode == 0
+    classifications = [
+        e for e in _events_from_stdout(proc.stdout) if e["event"] == "classification"
+    ]
+    rids = {c["request_id"] for c in classifications}
+    assert "r2" not in rids
+    assert "r3" not in rids
+    assert "r1" in rids
+    assert "r4" in rids
+
+
 def test_top_k_clamps_to_corpus_size(tmp_path):
     """Asking for more matches than the corpus has returns just the corpus."""
     corpus = _write_corpus(
