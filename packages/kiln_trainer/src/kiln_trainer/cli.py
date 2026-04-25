@@ -71,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_embed_search_parser(sub)
     _build_voice_coach_parser(sub)
     _build_mcp_serve_parser(sub)
+    _build_curate_agent_parser(sub)
 
     return parser
 
@@ -390,6 +391,32 @@ def _build_mcp_serve_parser(sub: argparse._SubParsersAction) -> None:
     )
 
 
+def _build_curate_agent_parser(sub: argparse._SubParsersAction) -> None:
+    """``curate-agent`` — Saturday Phase 4 Managed Agent.
+
+    Long-running corpus curation by Claude Opus 4.7 deployed as a
+    Managed Agent. Reads a corpus JSONL, deploys the agent, runs
+    the multi-turn session, parses the structured output, writes
+    curated.jsonl + report.json. The flagship Managed Agent feature."""
+    p = sub.add_parser(
+        "curate-agent",
+        help="run the corpus-curator Managed Agent over a JSONL",
+        description=(
+            "Deploy the corpus-curator Managed Agent (Opus 4.7) and "
+            "have it review every sample. Writes curated.jsonl + "
+            "report.json with per-sample decisions."
+        ),
+    )
+    p.add_argument("--corpus", type=Path, required=True, help="input corpus JSONL")
+    p.add_argument("--output", type=Path, required=True, help="output curated JSONL")
+    p.add_argument("--report", type=Path, required=True, help="output report JSON")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="skip API calls; deterministic preview curator inline",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -441,6 +468,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import mcp_serve as mcp_serve_cmd
 
         return mcp_serve_cmd.run(args)
+    if args.command == "curate-agent":
+        from kiln_trainer.commands import curate_agent as curate_agent_cmd
+
+        return curate_agent_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here

@@ -1,0 +1,16 @@
+{
+  "agent": "${AGENT_ID}",
+  "environment_id": "${ENV_ID}",
+  "resources": [
+    {
+      "type": "file",
+      "file_id": "${INPUT_FILE_ID}",
+      "mount_path": "/mnt/session/uploads/workspace/corpus.jsonl"
+    }
+  ],
+  "metadata": {
+    "run": "deep-curation",
+    "initiated_by": "timtvn",
+    "component": "corpus-curator"
+  }
+}
