@@ -17,7 +17,12 @@ struct VoiceSelectorView: View {
     let voices: [KilnVoices.Voice]
     let activeID: UUID?
     let onSelect: (UUID) -> Void
-    let onManage: () -> Void
+    /// Audit M6: optional. If nil, the "Manage voices…" item is
+    /// suppressed entirely so the user doesn't tap a no-op. The
+    /// dedicated Manage Voices UI is post-hackathon work; until it
+    /// ships, callers should pass nil rather than a placeholder
+    /// closure that does nothing.
+    let onManage: (() -> Void)?
 
     var body: some View {
         Menu {
@@ -35,9 +40,13 @@ struct VoiceSelectorView: View {
                         }
                     }
                 }
-                Divider()
+                if onManage != nil {
+                    Divider()
+                }
             }
-            Button("Manage voices...", action: onManage)
+            if let onManage {
+                Button("Manage voices...", action: onManage)
+            }
         } label: {
             label
         }

@@ -3,8 +3,9 @@ import Foundation
 /// One-click export of a trained voice as a self-contained bundle
 /// (`.kiln` = zipped fused adapter + Modelfile + signature card +
 /// manifest). Sharing is purely file-based; no cloud upload happens
-/// here. Cloud backup (opt-in) is a separate feature — see
-/// `CloudBackup.swift`.
+/// here. Local encrypted backup is a separate feature — see
+/// ``Backup/BackupService.swift``. Cloud upload (iCloud Drive / S3)
+/// remains out of scope per CLAUDE.md.
 public enum KilnShare {
     /// True once the M8 `ShareExporter` wiring landed — lets feature
     /// flags / tests short-circuit the old stub path.

@@ -1,0 +1,36 @@
+{
+  "component": "quality-classifier",
+  "version": 1,
+  "generated_at": "2026-04-25T20:06:57Z",
+  "git_sha": "e0e060179a5945fc07b39ca295469c58ba57e018",
+  "teacher": {
+    "model_id": "claude-opus-4-7",
+    "labeling_run": "managed-agents/quality-classifier/runs"
+  },
+  "artifact": {
+    "path": "packages/kiln_trainer/artifacts/quality-classifier.pkl",
+    "format": "sklearn-pickle",
+    "sha256": "333616fc7ca961ccbeef05adcf6d6a650a50fe1140bb2e2bc0f352b96b247ccd",
+    "size_bytes": 580334
+  },
+  "training": {
+    "label_count": 1500,
+    "n_train": 1200,
+    "n_test": 300,
+    "random_state": 1337
+  },
+  "metrics": {
+    "train_accuracy": 0.9975,
+    "test_accuracy": 0.99,
+    "disagreement_margin": 0.01
+  },
+  "thresholds": {
+    "keep": 0.7,
+    "chosen_only": 0.4
+  },
+  "ship_bar": {
+    "test_accuracy_floor": 0.8,
+    "test_accuracy_met": true
+  },
+  "notes": "F1 isn't computed at training time (binary scoring, balanced classes in practice). Test accuracy is the headline metric. Format is sklearn-pickle, not CoreML \u2014 the original SPEC \u00a77.2 ``model.mlmodel`` phrasing predates the M9.C scope; the runtime path is the pickle."
+}

@@ -4,6 +4,11 @@ import SwiftUI
 /// the detail slides into place alongside the stage view.
 struct DetailView: View {
     let project: Project?
+    /// Audit C5: thread the AppModel down so the Complete detail pane
+    /// can resolve a per-project ``SamplePreviewModel``. Optional so
+    /// existing callers / previews that don't have an AppModel still
+    /// compile (the Complete view falls back to a no-runner panel).
+    var model: AppModel? = nil
 
     var body: some View {
         ZStack {
@@ -31,7 +36,10 @@ struct DetailView: View {
         case .training:
             LogsPanel(project: project)
         case .complete:
-            CompleteDetailView(project: project)
+            CompleteDetailView(
+                project: project,
+                samplePreviewModel: model?.samplePreviewModel(for: project.id)
+            )
         }
     }
 }

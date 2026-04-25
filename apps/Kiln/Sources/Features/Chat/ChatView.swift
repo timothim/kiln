@@ -28,6 +28,11 @@ struct ChatView: View {
                 transcript
                 Divider()
                 composer
+                // Audit M13: reinforce the local-first promise for any
+                // viewer who isn't tracking which features cross the
+                // boundary. Chat streams from local Ollama; nothing on
+                // this surface ever calls Anthropic.
+                runningLocallyFooter
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -42,6 +47,20 @@ struct ChatView: View {
             }
         }
         .animation(Kiln.Motion.standard, value: inspector?.selection != nil)
+    }
+
+    private var runningLocallyFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.tertiary)
+                .font(.system(size: 9))
+            Text("Running locally — chat tokens stream from your Ollama daemon, not the cloud.")
+                .font(Kiln.Font.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, Kiln.Space.m)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Convert a chat-bubble tap into a Voice Inspector selection.

@@ -29,6 +29,8 @@ import json
 import os
 import sys
 
+from kiln_trainer import events as _events
+
 CLOUD_MODEL_ID = "claude-opus-4-7"
 SYSTEM_PROMPT = """You are the Kiln Training Advisor — a brief, useful observer of an
 ongoing fine-tuning run. You see: the most recent sample completions
@@ -140,11 +142,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         envelope = _read_input(args.input_file)
     except (OSError, json.JSONDecodeError) as exc:
-        sys.stdout.write(json.dumps({
-            "event": "error", "code": "data_invalid",
-            "message": f"could not read advisor input: {exc}",
-            "recoverable": False,
-        }) + "\n")
+        # Audit H6: route through ``events.error`` so the schema is
+        # validated against ``EVENT_TYPES`` / ``ERROR_CODES`` at emit
+        # time. ``sys.stdout`` is patched by training_advisor unit tests
+        # so the underlying ``emit`` writes there transparently.
+        _events.emit(_events.error(
+            code="data_invalid",
+            message=f"could not read advisor input: {exc}",
+            recoverable=False,
+        ))
         return 1
 
     samples = envelope.get("samples") or []
@@ -168,42 +174,37 @@ def main(argv: list[str] | None = None) -> int:
             )
             model_id = args.local_model
     except PermissionError as exc:
-        sys.stdout.write(json.dumps({
-            "event": "error", "code": "data_invalid",
-            "message": str(exc), "recoverable": False,
-        }) + "\n")
+        _events.emit(_events.error(
+            code="data_invalid", message=str(exc), recoverable=False,
+        ))
         return 1
     except (ConnectionError, OSError) as exc:
-        sys.stdout.write(json.dumps({
-            "event": "error", "code": "subprocess_failed",
-            "message": str(exc), "recoverable": False,
-        }) + "\n")
+        _events.emit(_events.error(
+            code="subprocess_failed", message=str(exc), recoverable=False,
+        ))
         return 1
     except Exception as exc:  # noqa: BLE001
-        sys.stdout.write(json.dumps({
-            "event": "error", "code": "internal",
-            "message": str(exc), "recoverable": False,
-        }) + "\n")
+        _events.emit(_events.error(
+            code="internal", message=str(exc), recoverable=False,
+        ))
         return 1
 
     if not text:
-        sys.stdout.write(json.dumps({
-            "event": "error", "code": "internal",
-            "message": "training-advisor returned empty content",
-            "recoverable": False,
-        }) + "\n")
+        _events.emit(_events.error(
+            code="internal",
+            message="training-advisor returned empty content",
+            recoverable=False,
+        ))
         return 1
 
     # Truncate to one line, ≤120 chars (Opus is instructed but not
     # gated; trim defensively).
     line = text.splitlines()[0][:120].strip()
-    sys.stdout.write(json.dumps({
-        "event": "advisor_observation",
-        "iter": iter_now,
-        "content": line,
-        "model": model_id,
-    }) + "\n")
-    sys.stdout.flush()
+    _events.emit(_events.advisor_observation(
+        iter=iter_now,
+        content=line,
+        model=model_id,
+    ))
     return 0
 
 

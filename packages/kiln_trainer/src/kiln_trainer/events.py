@@ -38,6 +38,32 @@ EVENT_TYPES: frozenset[str] = frozenset(
     }
 )
 
+# Audit H6: agent-flavored event names emitted by the agent-shaped
+# subcommands (``curate-agent``, ``ingest-via-agent``,
+# ``training_advisor``). These bypass the typed ``EVENT_TYPES``
+# constructor surface above (the agent stream is variable-shape
+# rather than the rigid training-loop schema) but must still be
+# validated so a typo like ``"agent_thinkng"`` raises at emit time
+# instead of silently being dropped by the Swift decoder.
+AGENT_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        # Curation Managed Agent + Ingest orchestrator + Training Advisor
+        "agent_thinking",
+        "agent_decision",
+        "agent_progress",
+        "agent_completion",
+        # Hierarchical orchestrator events (PR #21 final session)
+        "orchestrator_thinking",
+        "subagent_spawned",
+        "subagent_returned",
+        "sample_found",
+        "completion",
+        "deduplication_round",
+        "quality_filter_round",
+        "finalization",
+    }
+)
+
 STAGES: frozenset[str] = frozenset(
     {"sft", "dpo", "fuse", "gguf", "ollama", "generation", "classify"}
 )
@@ -226,3 +252,33 @@ def emit(event: dict[str, Any], stream: IO[str] | None = None) -> None:
         raise ValueError("event serialisation contains embedded newline")
     stream.write(line + "\n")
     stream.flush()
+
+
+def emit_agent(
+    event_type: str,
+    *,
+    stream: IO[str] | None = None,
+    **fields: Any,
+) -> None:
+    """Validate-and-emit an agent-stream event.
+
+    Audit H6: ``curate_agent`` / ``training_advisor`` / ingest orchestrator
+    historically built dicts with ``json.dumps({"event": "agent_thinking",
+    ...})`` and wrote them to stdout directly. A typo in the event type
+    (``"agent_thinkng"``) would pass through and the Swift decoder would
+    silently skip it — the user would see "the panel went silent" with
+    no error trail. This helper validates the event type against
+    :data:`AGENT_EVENT_TYPES` at emit time so typos raise loudly in the
+    sidecar instead.
+
+    Use ``events.emit_agent("agent_thinking", content=...)`` instead of
+    ``sys.stdout.write(json.dumps({"event": "agent_thinking", ...}))``.
+    """
+    if event_type not in AGENT_EVENT_TYPES:
+        raise ValueError(
+            f"agent event type must be in AGENT_EVENT_TYPES, got {event_type!r}. "
+            f"Allowed: {sorted(AGENT_EVENT_TYPES)}"
+        )
+    payload: dict[str, Any] = {"event": event_type}
+    payload.update(fields)
+    emit(payload, stream=stream)

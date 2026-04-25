@@ -13,26 +13,114 @@ final class AppModel {
     var trainModel: TrainModel?
     var exportModel: ExportModel?
     var chatModel: ChatModel?
+    /// Audit C2: when non-nil, the Voice Coach sheet is presented over
+    /// the Complete stage. Constructed by ``openVoiceCoach(for:)``,
+    /// cleared by ``closeVoiceCoach()``.
+    var voiceCoachModel: VoiceCoachModel?
+    /// The input snapshot for the currently-presented Voice Coach
+    /// session. Lives on AppModel so the sheet doesn't have to
+    /// re-derive it on every render.
+    var voiceCoachInput: VoiceCoachInput?
+    /// Audit C3: when non-nil, the Deep Curation sheet is presented
+    /// over the Dataset Doctor.
+    var deepCurationModel: DeepCurationModel?
+    /// Audit C5: per-project Sample Preview model. Constructed once
+    /// per ``samplePreviewModel(for:)`` call so the model survives
+    /// re-renders of the Complete detail pane. Cleared on
+    /// ``resetTraining()``.
+    private var samplePreviewModels: [Project.ID: SamplePreviewModel] = [:]
 
     /// Saved-voice library — drives the sidebar's bottom-pinned selector.
     /// Always non-nil so the selector has something to bind to at launch.
     let voicesModel: VoicesModel
+
+    /// Cloud-features settings (Audit C1). The Settings scene binds to
+    /// this directly. Lazy so test paths that never open Settings
+    /// don't materialise the Keychain probe at construction time.
+    private var _cloudSettings: CloudFeaturesSettings?
+    var cloudSettings: CloudFeaturesSettings {
+        if let s = _cloudSettings { return s }
+        let s = CloudFeaturesSettings()
+        _cloudSettings = s
+        return s
+    }
+
+    /// Local backup settings panel model. Lazy for the same reason.
+    private var _backupSettingsModel: BackupSettingsModel?
+    var backupSettingsModel: BackupSettingsModel {
+        if let m = _backupSettingsModel { return m }
+        let m = BackupSettingsModel(projectRootProvider: { [weak self] in
+            self?.selectedProject?.preparedDatasetURL?.deletingLastPathComponent()
+        })
+        _backupSettingsModel = m
+        return m
+    }
+
+    /// Long-running MCP server lifecycle owner. Lazy so tests don't
+    /// inadvertently keep a stdio server alive.
+    private var _mcpServerManager: MCPServerManager?
+    var mcpServerManager: MCPServerManager {
+        if let m = _mcpServerManager { return m }
+        let m = MCPServerManager(
+            launcher: TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        )
+        _mcpServerManager = m
+        return m
+    }
+
+    /// MCP Settings panel model — wires the manager + cloud settings.
+    private var _mcpServerSettingsModel: MCPServerSettingsModel?
+    var mcpServerSettingsModel: MCPServerSettingsModel {
+        if let m = _mcpServerSettingsModel { return m }
+        let m = MCPServerSettingsModel(manager: mcpServerManager, settings: cloudSettings)
+        _mcpServerSettingsModel = m
+        return m
+    }
+
+    /// Voice name advertised by the MCP server. Defaults to the user's
+    /// account slug; the snippet in Claude.app's config will reference
+    /// this exact value.
+    var defaultMCPVoiceName: String {
+        // Prefer the slug of the currently selected project (matches
+        // the export naming convention) so the MCP tool maps to the
+        // voice the user just trained. Otherwise fall back to a
+        // username-derived slug. Strips spaces and special characters
+        // so the resulting name is a valid Ollama tag.
+        if let project = selectedProject {
+            return "kiln-\(project.slug)"
+        }
+        let raw = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
+        let slug = raw.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined(separator: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return slug.isEmpty ? "kiln-user" : "kiln-\(slug)"
+    }
 
     /// Injected so tests can supply a fake TrainingRunner. Nil in the default
     /// init path — production wiring resolves the Python sidecar launcher.
     private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
     private let ollamaExporterFactory: (@MainActor () -> OllamaExporter)?
     private let ollamaClientFactory: (@MainActor () -> OllamaClient)?
+    private let voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)?
+    private let deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)?
+    private let sampleCompareRunnerFactory: (@MainActor () -> SampleCompareRunner)?
 
     init(
         trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
         ollamaExporterFactory: (@MainActor () -> OllamaExporter)? = nil,
         ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil,
+        voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)? = nil,
+        deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)? = nil,
+        sampleCompareRunnerFactory: (@MainActor () -> SampleCompareRunner)? = nil,
         voicesProvider: (any VoicesProvider)? = nil
     ) {
         self.trainingRunnerFactory = trainingRunnerFactory
         self.ollamaExporterFactory = ollamaExporterFactory
         self.ollamaClientFactory = ollamaClientFactory
+        self.voiceCoachRunnerFactory = voiceCoachRunnerFactory
+        self.deepCurationRunnerFactory = deepCurationRunnerFactory
+        self.sampleCompareRunnerFactory = sampleCompareRunnerFactory
         if let voicesProvider {
             self.voicesModel = VoicesModel(provider: voicesProvider)
         } else {
@@ -130,12 +218,21 @@ final class AppModel {
 
         let runDir = Self.runDirectory(for: projectID)
         // PR #23 Training Advisor wire — read the user's "Enable Training
-        // Advisor" toggle directly from UserDefaults so the AppModel
-        // doesn't depend on the CloudFeaturesSettings type that ships
-        // on feat/voice-coach. After both PRs merge into main the
-        // CloudFeaturesSettings reads/writes the same defaults keys.
-        let advisorEnabled = UserDefaults.standard.bool(forKey: "trainingAdvisorEnabled")
-        let advisorLocal = UserDefaults.standard.bool(forKey: "voiceCoachLocalMode")
+        // Advisor" toggle from the canonical defaults keys defined in
+        // ``CloudFeaturesSettingsKeys``. The earlier post-merge note
+        // ("the CloudFeaturesSettings reads/writes the same defaults
+        // keys") was correct in intent but used the wrong literal —
+        // ``CloudFeaturesSettingsKeys.trainingAdvisorEnabled`` is the
+        // dotted ``dev.kiln.cloud.trainingAdvisor.enabled`` form, not
+        // the bare ``trainingAdvisorEnabled`` literal that was hardcoded
+        // here. Fixing the audit's C4: toggle in Settings now actually
+        // gates the advisor.
+        let advisorEnabled = UserDefaults.standard.bool(
+            forKey: CloudFeaturesSettingsKeys.trainingAdvisorEnabled
+        )
+        let advisorLocal = UserDefaults.standard.bool(
+            forKey: CloudFeaturesSettingsKeys.voiceCoachLocalMode
+        )
         let request = TrainingRequest(
             datasetURL: datasetURL,
             runDir: runDir,
@@ -214,6 +311,117 @@ final class AppModel {
         chatModel = nil
     }
 
+    // MARK: - Voice Coach (Audit C2)
+
+    /// Open the Voice Coach sheet for the given project. Constructs a
+    /// fresh ``VoiceCoachModel`` + ``VoiceCoachInput`` snapshot tied to
+    /// the project's training report. No-op when the project has no
+    /// training report (Voice Coach surface only renders post-Complete
+    /// anyway).
+    func openVoiceCoach(for projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let report = projects[idx].trainingReport else { return }
+        let project = projects[idx]
+        let model = VoiceCoachModel(
+            runner: resolveVoiceCoachRunner(),
+            settings: cloudSettings,
+            apiKeyProvider: { [weak self] in
+                // Keychain failures here are non-fatal — the runner
+                // will surface ``missingAPIKey`` to the UI which
+                // already has a "Set up API key in Settings → Cloud
+                // features" CTA.
+                (try? self?.cloudSettings.loadAPIKey()) ?? nil
+            }
+        )
+        voiceCoachInput = Self.makeVoiceCoachInput(for: project, report: report)
+        voiceCoachModel = model
+    }
+
+    func closeVoiceCoach() {
+        voiceCoachModel = nil
+        voiceCoachInput = nil
+    }
+
+    /// Builds the snapshot Opus reads. Uses the training report's
+    /// concrete fields plus the project's user-facing name, so the
+    /// resulting markdown stays specific to *this* voice rather than a
+    /// generic "your voice" fallback. Sample completions stay empty —
+    /// the panel renders a "Try a prompt" CTA in v2 to attach examples.
+    static func makeVoiceCoachInput(
+        for project: Project,
+        report: TrainingReport
+    ) -> VoiceCoachInput {
+        var sig: [String: AnyCodable] = [
+            "voice_name": AnyCodable(project.name),
+            "iters_completed": AnyCodable(Double(report.itersCompleted)),
+        ]
+        if let total = report.totalIters {
+            sig["iters_total"] = AnyCodable(Double(total))
+        }
+        if let loss = report.finalLoss {
+            sig["final_train_loss"] = AnyCodable(loss)
+        }
+        if let valLoss = report.finalValLoss {
+            sig["final_val_loss"] = AnyCodable(valLoss)
+        }
+        sig["wall_clock_seconds"] = AnyCodable(report.wallClockSec)
+        return VoiceCoachInput(styleSignature: sig, sampleCompletions: [])
+    }
+
+    // MARK: - Deep Curation (Audit C3)
+
+    /// Open the Deep Curation sheet for the given project. Builds a
+    /// dry-run request against the project's prepared corpus; the
+    /// sidecar recognises ``--dry-run`` and produces a deterministic
+    /// preview without burning Anthropic minutes (the real Managed
+    /// Agent path is opt-in via the same UI once the user toggles
+    /// off ``--dry-run`` in v2). No-op without a prepared dataset.
+    func openDeepCuration(for projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let datasetURL = projects[idx].preparedDatasetURL else { return }
+        let runDir = datasetURL.deletingLastPathComponent()
+        let request = DeepCurationRequest(
+            corpusPath: datasetURL,
+            outputPath: runDir.appendingPathComponent("curated.jsonl"),
+            reportPath: runDir.appendingPathComponent("curate-report.json"),
+            dryRun: true
+        )
+        let apiKey = (try? cloudSettings.loadAPIKey()) ?? nil
+        let model = DeepCurationModel(
+            runner: resolveDeepCurationRunner(),
+            request: request,
+            apiKey: apiKey
+        )
+        deepCurationModel = model
+    }
+
+    func closeDeepCuration() {
+        deepCurationModel = nil
+    }
+
+    // MARK: - Sample Preview (Audit C5)
+
+    /// Lazily construct (or return) the Sample Preview model for a
+    /// project. Returns nil when the project has no training report —
+    /// the Complete detail pane only renders for completed projects so
+    /// this is conservative defense.
+    func samplePreviewModel(for projectID: Project.ID) -> SamplePreviewModel? {
+        if let existing = samplePreviewModels[projectID] {
+            return existing
+        }
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else {
+            return nil
+        }
+        guard let report = projects[idx].trainingReport else { return nil }
+        let model = SamplePreviewModel(
+            runner: resolveSampleCompareRunner(),
+            baseModel: Self.defaultBaseModel(for: projects[idx].modelSize),
+            adapterURL: report.adapterURL
+        )
+        samplePreviewModels[projectID] = model
+        return model
+    }
+
     // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
@@ -245,6 +453,30 @@ final class AppModel {
             return factory()
         }
         return URLSessionOllamaClient()
+    }
+
+    private func resolveVoiceCoachRunner() -> VoiceCoachRunner {
+        if let factory = voiceCoachRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessVoiceCoachRunner(launcher: launcher)
+    }
+
+    private func resolveDeepCurationRunner() -> DeepCurationRunner {
+        if let factory = deepCurationRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessDeepCurationRunner(launcher: launcher)
+    }
+
+    private func resolveSampleCompareRunner() -> SampleCompareRunner {
+        if let factory = sampleCompareRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessSampleCompareRunner(launcher: launcher)
     }
 
     /// Best-effort resolver for a llama.cpp checkout. Respects the

@@ -70,6 +70,14 @@ Kiln is a native macOS app that fine-tunes a local LLM to sound like the user fr
 
 `post-tool-use.sh` formats edited files. `pre-commit.sh` gates commits on `make test`. `stop.sh` appends a five-bullet summary to `SESSION_LOG.md`. See `.claude/settings.json` and <https://code.claude.com/docs/en/hooks-guide>.
 
-## First action
+## Project status (2026-04-26)
 
-Read `SPEC.md`. Produce a plan for **M0** using `/plan M0`. Do not code yet. Wait for approval.
+The five-day sprint is complete. M0–M9 shipped, plus the Saturday final push (Voice Coach, MCP server, agent ingestion, Deep Curation, Training Advisor, Behind-the-Scenes). The final completion report is at [`docs/sessions/saturday-final-complete.md`](docs/sessions/saturday-final-complete.md); the post-audit hand-off (the most recent state) is at [`docs/sessions/post-audit-handoff.md`](docs/sessions/post-audit-handoff.md). The submission writeup will land at `docs/submission/writeup.md` ahead of recording.
+
+## Resuming work
+
+If you are picking up this repo in a future session:
+
+1. Read [`docs/sessions/post-audit-handoff.md`](docs/sessions/post-audit-handoff.md) for current status, deferred items, and any outstanding risks.
+2. Read [`SPEC.md`](SPEC.md) and [`DECISIONS.md`](DECISIONS.md) for product intent and load-bearing choices.
+3. Use `/plan` for any non-trivial milestone before coding. Verifier subagent on every merge to `main`.

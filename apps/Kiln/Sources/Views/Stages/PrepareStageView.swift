@@ -10,6 +10,12 @@ struct PrepareStageView: View {
     let onCancel: () -> Void
     let onContinue: () -> Void
     let onReset: () -> Void
+    /// Audit C3 — passed in from StageRouterView when Deep Curation is
+    /// enabled. ``DatasetDoctorView`` is what actually renders the CTA
+    /// + sheet; PrepareStageView just threads the parameters down.
+    var onOpenDeepCuration: (() -> Void)? = nil
+    var deepCurationModel: DeepCurationModel? = nil
+    var onCloseDeepCuration: (() -> Void)? = nil
 
     var body: some View {
         Group {
@@ -31,7 +37,10 @@ struct PrepareStageView: View {
                         project: project,
                         report: report,
                         onContinue: onContinue,
-                        onReset: onReset
+                        onReset: onReset,
+                        onOpenDeepCuration: onOpenDeepCuration,
+                        deepCurationModel: deepCurationModel,
+                        onCloseDeepCuration: onCloseDeepCuration
                     )
                     .transition(Kiln.Motion.stageTransition)
                 case .failed(let error):

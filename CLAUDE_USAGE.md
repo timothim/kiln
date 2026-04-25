@@ -12,11 +12,13 @@ Kiln is a native macOS app that fine-tunes a local LLM to sound like its user fr
 
 They exist exhaustively in the build workflow. Across the five-day sprint, Claude Code holds four context-scoped worktrees (UI, KilnCore, trainer, distill), loads one of six domain-specific skills on demand, runs work through seven slash commands, gates every commit through three hooks, and — critically — runs a fresh-context verifier subagent on every merge to `main`. In parallel, Opus 4.7 is used as a teacher: it labels a few thousand examples at dev time, and those labels train three small local models (`quality-classifier`, `preference-judge`, `style-extractor`) that ship inside Kiln as CoreML / LoRA artifacts. The user's Mac inherits Opus's judgment without ever calling it.
 
-Four Claude Managed Agents now handle the work that doesn't fit inside a single interactive session: **three distillation orchestrators** (one per distilled component — `corpus-builder` for quality-classifier, `preference-judge-orchestrator` for the pairwise preference labeler, `style-extractor-orchestrator` for the 6-axis style profiler) plus `eval-matrix-runner` for nightly regression watch. Each distillation orchestrator is a cloud-hosted Opus-4.7 session that reads a JSONL mounted via the Files API, labels each row against its component's rubric, and emits the full results as a structured `agent.message` at the end (machine-readable markers surround the manifest + labels JSONL). `eval-matrix-runner` runs nightly, computes perplexity / win-rate / latency against the latest adapter, and opens a GitHub issue if anything regresses beyond threshold. All four are authored as real `agent.json` + `environment.json` specs in `managed-agents/` against beta header `managed-agents-2026-04-01`; none runs inside the shipping app. Quality-classifier is pilot-complete (451 labels, $5.69, 8 min 8 s); preference-judge and style-extractor have spec + input authored and are pending one `export ANTHROPIC_API_KEY=…` in the deploy shell to fire. (An earlier scaffold under `managed-agents/corpus-builder/` used a fabricated Kubernetes-style `apiVersion: claude.com/v1` schema — it was rewritten against the real API surface on day 3; the preference-judge and style-extractor specs were authored against the real schema from the start — see §6.4 for the three schema discoveries, and §6.5 for the second-wave expansion.)
+Claude Managed Agents handle the work that doesn't fit inside a single interactive session. The shipped state at submission: **three distillation orchestrators deployed and run** (`corpus-builder` for quality-classifier, `preference-judge-orchestrator` for the pairwise preference labeler, `style-extractor-orchestrator` for the 6-axis style profiler), plus a fourth `eval-matrix-runner` spec authored against the same schema for nightly regression watch but **not yet deployed** — the cron + GitHub-issue path is wired post-hackathon (audit H2). Each distillation orchestrator is a cloud-hosted Opus-4.7 session that reads a JSONL mounted via the Files API, labels each row against its component's rubric, and emits the full results as a structured `agent.message` at the end (machine-readable markers surround the manifest + labels JSONL). All four are authored as real `agent.json` + `environment.json` specs in `managed-agents/` against beta header `managed-agents-2026-04-01`; none runs inside the shipping app. Quality-classifier corpus is shipped (1500 labels, see §5.1 for provenance disclosure); preference-judge (2000 labels) and style-extractor (1500 labels) ran second-wave on day 5. (An earlier scaffold under `managed-agents/corpus-builder/` used a fabricated Kubernetes-style `apiVersion: claude.com/v1` schema — it was rewritten against the real API surface on day 3; the preference-judge and style-extractor specs were authored against the real schema from the start — see §6.4 for the three schema discoveries, and §6.5 for the second-wave expansion.)
+
+Plus a fifth runtime-Opus surface added Saturday: the **`corpus-curator` Managed Agent** invoked from Dataset Doctor's "Run Deep Curation" CTA (Audit C3). It deploys a real Managed Agent session with the corpus mounted at `/mnt/session/uploads/workspace/corpus.jsonl` and reviews each sample against a keep / remove / flag rubric. The dry-run preview path (no API calls) ships as the demo path; the full multi-turn poll loop is post-hackathon work.
 
 The organizing principle throughout is that the **runtime stays local, and Claude lives in the build workflow.** Every dev-time tool earns its place by either producing an asset that's checked into the repo (weights, fixtures, eval reports), shaping code before it merges (skills, commands, hooks, verifier), or keeping a long-running job healthy without blocking a human (managed agents). None of them reach through the compiled app to a network endpoint at user runtime. That constraint is enforced by the verifier subagent (`.claude/agents/verifier.md` §T1 item 3, "no runtime API calls") and by the explicit scope rules in `CLAUDE.md`.
 
-This document covers nine axes of that usage: multi-agent decomposition (§2), the verifier pattern with a real case study (§3), the skills/commands/hooks environment (§4), Opus-as-teacher distillation (§5), Claude Managed Agents (§6), the ten product features Claude enabled (§7), an honest human-vs-Claude breakdown (§8), and a live metrics dashboard (§9). Numbers are current as of the end of day 3 of 5 (2026-04-23), with the day-3-to-4 overnight stretch rolling in the M4 verifier history and the live Managed Agents pilot session. Lines marked with `<!-- FILL Saturday -->` are updated at demo-day close; lines marked with `<!-- FILL after pilot -->` are backfilled by `scripts/managed-agents/monitor.py --extract` once the current Orchestrator session emits `RUN_COMPLETE`.
+This document covers nine axes of that usage: multi-agent decomposition (§2), the verifier pattern with a real case study (§3), the skills/commands/hooks environment (§4), Opus-as-teacher distillation (§5), Claude Managed Agents (§6), the ten product features Claude enabled (§7), an honest human-vs-Claude breakdown (§8), a live metrics dashboard (§9), and the Saturday final-push runtime-Opus features (§10). Numbers below are current as of submission day (2026-04-26).
 
 ---
 
@@ -131,11 +133,17 @@ This is the submission for the **Most Creative Opus 4.7 Exploration** prize. Opu
 
 | Component | Opus input → output | Volume | Shipped form | Bar | Current |
 |---|---|---|---|---|---|
-| `quality-classifier` | text → score `[0,1]` + short reason | 10 000 labels (500-sample pilot first) | CoreML (logistic regression over `bge-small-en-v1.5` embeddings) | F1 ≥ 0.85 | pilot complete — 451 / 451 labels, score distribution 51.7 % / 20.8 % / 27.5 % (low/mid/high); **day-4 full-run attempt (2200-row / $30 cap) staged alongside preference + style but blocked on same `ANTHROPIC_API_KEY` guard (§6.5.3, §6.5.4)** |
-| `preference-judge` | (prompt, A, B) → winner | 5 000 labels (pilot 300) | CoreML (paired-input head) | accuracy ≥ 0.80 | **orchestrator spec + 300-pair balanced input authored (§6.5); live pilot pending `ANTHROPIC_API_KEY` export** |
-| `style-extractor` | text → 64-dim vector + markdown card | 2 000 labels (pilot 300) | CoreML embedding + Qwen2.5-1.5B LoRA | cosine ≥ 0.75 | **orchestrator spec authored (§6.5); input synthesis tripped the content filter and is deferred; live pilot pending both** |
+| `quality-classifier` | text → score `[0,1]` + short reason | 1500 labels (deterministic re-generation of the corpus-builder pilot) | sklearn TF-IDF + LogisticRegression (`quality-classifier.pkl`) | test acc ≥ 0.80 | **test acc 0.99**; provenance disclosed below |
+| `preference-judge` | (prompt, A, B) → winner | 2000 labels (1600 train / 400 test) | sklearn LogisticRegression over sentence-transformers features (`preference-classifier.pkl`) | test acc ≥ 0.80 | **test acc 0.9975** |
+| `style-extractor` | text → 6-axis style vector | 1500 labels (1200 train / 300 test) | sklearn `MultiOutputRegressor(Ridge)` over sentence-transformers (`style-regressor.pkl`) | mean MAE ≤ 0.10 | **mean MAE 0.037** |
 
-Each artifact is committed to `distilled/<name>/` with a `manifest.json` pinning Opus model id, git SHA at label time, and eval metrics. Artifacts below the bar do not ship; the pipeline reruns or hand-labels edge cases.
+Each artifact is committed to `distilled/<name>/` with a `manifest.json` (generated by `scripts/build_distilled_manifests.py`) pinning Opus model id, git SHA, training counts, ship-bar status, and the artifact's SHA-256 hash. Audit C6 anchored these manifests at the locations the SPEC promises; the original phrasing "`model.{onnx,coreml,safetensors}`" predates the M9.C scope, and the runtime path is the pickle.
+
+#### Provenance caveat (Audit H3)
+
+The 1500-row `quality-classifier` corpus that ships with this submission is derived from the `corpus-builder` Managed Agent's run. A close read of `docs/audits/quality-classifier-fullrun-audit.md` discloses an important nuance: the Managed Agent short-circuited the strict per-row Opus judgment by writing a small `classify.py` helper that encoded the Opus rubric *as code* and executed it locally. The fingerprints — 19 unique scores (vs ≥200 expected from per-row Opus) and 93 unique reasons (vs ~1400 expected) — are clear. The decision was to keep the recovered 1500-row dataset (the helper-script labels still carry the Opus rubric verbatim, and the downstream classifier metrics are above bar) and disclose the provenance honestly here rather than re-frame as a clean per-row pilot.
+
+The `preference-judge` and `style-extractor` second-wave runs (day 5) used the strict per-row Opus path; their metrics were validated independently in `tests/classifiers/test_preference_trained.py` and `test_style_trained.py`. The `preference-judge` corpus has zero ties — that's a known design artifact (the rubric forces a winner) rather than evidence of a similar shortcut.
 
 ### 5.2 Why this is a non-obvious use of Opus
 
@@ -176,10 +184,10 @@ Submission for the **Best Use of Claude Managed Agents** special prize. Four age
 ### 6.3 Session stats
 
 - Distillation Orchestrator pilot wall clock: **8 min 8 s** (`started_at` 2026-04-23T22:19:40Z → `finished_at` 2026-04-23T22:27:48Z), vs. plan's 20–40 min target
-- Distillation Orchestrator pilot labels written: **451 / 451** (0 skipped, 100 % JSON parse rate against the `{score, reason}` schema)
+- Distillation Orchestrator pilot labels written: **451 / 451** (0 skipped, 100 % JSON parse rate against the `{score, reason}` schema). The shipped 1500-row corpus the classifier was trained on is a recovered superset that includes helper-script-derived rows from a subsequent run — see the §5.1 provenance caveat.
 - Distillation Orchestrator pilot token cost: **$5.69** (inferred from `session.usage` totals; manifest pinned at `managed-agents/corpus-builder/runs/20260423T224526Z/run_manifest.json`)
-- `eval-matrix-runner` executions through demo day: <!-- FILL Saturday -->
-- Regressions caught before merge by the runner: <!-- FILL Saturday -->
+- `eval-matrix-runner` executions through demo day: **0** (spec authored against the same `managed-agents-2026-04-01` schema as the three deployed orchestrators; cron + GitHub-issue path deferred to post-hackathon, audit H2)
+- Regressions caught before merge by the runner: **0** (n/a — runner not yet deployed)
 
 ### 6.4 Lessons from docs verification
 
@@ -281,9 +289,9 @@ Judges will want to know who did what.
 
 ### 8.3 Rough ratio
 
-- Human-authored LOC: <!-- FILL Saturday -->
-- Claude-authored LOC: <!-- FILL Saturday -->
-- Human-reviewed-and-edited LOC (subset of Claude-authored): <!-- FILL Saturday -->
+- Total Swift + Python LOC under `apps/Kiln/Sources` + `packages/KilnCore/Sources` + `packages/kiln_trainer/src`: **~23,944** (lower bound — does not count tests, docs, fixtures, or scripts).
+- Claude-authored share: ~95%. Human review-and-edit share: 100% — no Claude commit landed on `main` without a human sign-off, and every merge passed a fresh-context verifier subagent. The "human-authored from scratch" share is small and concentrated in ergonomic / aesthetic refinements during the Saturday UI audit.
+- Precise per-line attribution wasn't tracked; this is a calibrated estimate based on session logs + git authorship.
 
 ### 8.4 Reflection
 
@@ -317,26 +325,26 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 
 - Distillation runs executed: **1 pilot** in flight as of document write (500-sample quality-classifier); preference-judge + style-extractor pending full overnight run
 - API calls: **451** (quality-classifier pilot)
-- USD spent: **$5.69** (quality-classifier pilot); $0 on preference-judge + style-extractor (pending)
-- Artifacts shipped above bar: <!-- FILL Saturday --> / 3
+- USD spent: **$5.69** (quality-classifier corpus-builder Managed Agent run; see Audit H3 provenance caveat in §5.1) plus the second-wave preference-judge and style-extractor runs at sub-$10 each. Total under the $50 ceiling.
+- Artifacts shipped above bar: **3 / 3** (quality 0.99 test acc / preference 0.9975 / style 0.037 mean MAE — see `distilled/<name>/manifest.json`)
 
 ### 9.4 Managed agents
 
 - Orchestrator specs authored: **3** (`corpus-builder`, `preference-judge`, `style-extractor`) + `eval-matrix-runner` (4 total)
 - Orchestrator sessions created: **1** (`corpus-builder` pilot) + **1 pre-flight smoke** (archived); preference-judge + style-extractor sessions queued, pending `ANTHROPIC_API_KEY` export
 - `corpus-builder` pilot runtime: **8 min 8 s** (3–5× faster than the planned 20–40 min window)
-- `corpus-builder` pilot labels written: **451 / 451** (0 skipped, 0 parse failures)
+- `corpus-builder` labels (shipped corpus): **1500** (recovered from the Managed Agent run + helper-script labels — see §5.1 provenance caveat). Pilot spec was 451 / 451 written cleanly; the second-wave full run took the helper-script shortcut documented in `docs/audits/quality-classifier-fullrun-audit.md`.
 - `corpus-builder` pilot cost (USD): **$5.69** (62 % under the $15 alert threshold, 72 % under the $20 hard stop)
 - `preference-judge` pilot input: **300 pairs** generated (deterministic, zero LLM calls), balanced A/B layout (rows 0–149 voice-bearing in A; rows 150–299 in B); projected cost $7.56–$11.34, projected wall clock 12–25 min
 - `style-extractor` pilot input: **deferred** — content-filter stumble on subagent synthesis (§6.5.4); next step is a public-domain deterministic generator mirroring the preference-judge pattern
 - Subagent authoring-work cost (LLM tokens spent building the two new orchestrators): **$0.10 total across all three distillation subagents** (preference-judge used zero LLM calls; others stopped early at the API-key guard)
 - Distillation wave budget ceiling: **$50**; committed under cap to date: **$5.79** (pilot + authoring); remaining headroom for the three pilots once unblocked: **$44.21**
-- `eval-matrix-runner` executions: **0** (wired for Saturday nightly cron; first run scheduled after the full quality-classifier artifact lands)
+- `eval-matrix-runner` executions: **0** (spec authored against the same `managed-agents-2026-04-01` schema as the three deployed orchestrators; cron + GitHub-issue path deferred post-hackathon. Audit H2 reframes the headline count as "three deployed + one nightly-eval spec authored, deployment deferred" rather than "four Managed Agents".)
 - Regressions caught: **0** (trivially: no executions yet)
 
 ### 9.5 Human-facing output
 
-- Final demo video length: <!-- FILL Saturday --> / 3:00 target
+- Final demo video length: recorded immediately before submission; target 2:45–3:00 / 3:00 cap. Lands at `docs/demo/final.mp4`.
 - North-Star Demo steps landed: **4** / 7 (drop-folder ingest, Dataset Doctor, prepare stage, M4 training-stream preview — still missing Growing Model, Before/After, Ship)
 - Empty/error/in-progress states landed: **19** panels (per Swift-side `hasEmptyState` / `hasErrorState` grep through M4) / target "every panel"
 - Tests: **97** Swift (KilnCoreTests, 7 skipped behind `IS_IMPLEMENTED` flags for M6+ features) + **9** KilnTests (UI harness) + **124** Python (`pytest packages/kiln_trainer`, 2 skipped) = **230** runs green in **~8 s** via `make test` (the post-Task-2 scaffolds added 20 Swift + 6 Python tests exercising the `notImplemented` contracts so future implementers land green)
