@@ -1,3 +1,5 @@
+import CryptoKit
+import Security
 import XCTest
 @testable import KilnCore
 
@@ -242,32 +244,64 @@ final class BackupServiceTests: XCTestCase {
     }
 
     func test_restore_rejects_bundle_with_path_traversal_entry() async throws {
-        // Build a synthetic bundle whose payload contains an entry with
-        // a ``../`` segment, then try to restore it. The restore must
-        // throw ``unsafeEntryPath`` and write nothing outside the
-        // destination directory.
-        let projectURL = try makeProject(["legitimate.txt": "safe"])
-        let backupsDir = tmpRoot.appendingPathComponent("backups", isDirectory: true)
+        // End-to-end check: forge a real ``.kilnbackup`` whose decrypted
+        // payload contains a ``../`` entry path, then call
+        // ``service.restore(...)`` and confirm it throws
+        // ``unsafeEntryPath`` rather than landing the entry's bytes
+        // outside the destination directory. Saturday-audit T2 from
+        // PR #18 — the previous version of this test only exercised the
+        // unit-level guard, not the wired-in restore path.
         let restoreDir = tmpRoot.appendingPathComponent("restored", isDirectory: true)
-        let service = DiskBackupService()
-        let bundleURL = try await service.backup(
-            projectRoot: projectURL,
-            projectID: "trav-test",
-            passphrase: "passphrase-123",
-            destinationDirectory: backupsDir
+        let bundleURL = tmpRoot.appendingPathComponent("poisoned.kilnbackup")
+        let passphrase = "passphrase-123"
+
+        let payload = BackupPayload(
+            projectID: "evil",
+            createdAtISO8601: DiskBackupService.iso8601Now(),
+            entries: [
+                BackupEntry(
+                    path: "../escaped.txt",
+                    contentsBase64: Data("attempted-escape".utf8).base64EncodedString(),
+                    size: 16
+                )
+            ]
         )
+        let plaintext = try JSONEncoder().encode(payload)
 
-        // Decrypt + re-encrypt with a malicious entry path injected.
-        let original = try await service.metadata(bundleURL: bundleURL, passphrase: "passphrase-123")
-        XCTAssertEqual(original.entryCount, 1)
+        // Re-do the bundle assembly the same way ``backup(...)`` does.
+        var saltBytes = [UInt8](repeating: 0, count: BackupConstants.saltLength)
+        let saltStatus = SecRandomCopyBytes(kSecRandomDefault, saltBytes.count, &saltBytes)
+        XCTAssertEqual(saltStatus, errSecSuccess)
+        let salt = Data(saltBytes)
+        let key = try DiskBackupService.deriveKey(passphrase: passphrase, salt: salt)
+        let nonce = ChaChaPoly.Nonce()
+        let sealed = try ChaChaPoly.seal(plaintext, using: key, nonce: nonce)
 
-        // Recreate a bundle with a poisoned entry path. The simplest
-        // route is to call assertSafeEntryPath directly — full bundle
-        // tampering would require duplicating the encrypt path here
-        // and adds nothing to the assertion.
-        XCTAssertThrowsError(try DiskBackupService.assertSafeEntryPath("../escaped.txt"))
-        _ = bundleURL
-        _ = restoreDir
+        var bundleData = Data()
+        bundleData.append(contentsOf: BackupConstants.magic)
+        bundleData.append(salt)
+        bundleData.append(Data(nonce))
+        bundleData.append(sealed.ciphertext)
+        bundleData.append(sealed.tag)
+        try bundleData.write(to: bundleURL, options: .atomic)
+
+        do {
+            _ = try await DiskBackupService().restore(
+                bundleURL: bundleURL,
+                passphrase: passphrase,
+                into: restoreDir
+            )
+            XCTFail("expected restore to throw unsafeEntryPath")
+        } catch BackupError.unsafeEntryPath(let path) {
+            XCTAssertEqual(path, "../escaped.txt")
+        } catch {
+            XCTFail("expected unsafeEntryPath, got \(error)")
+        }
+
+        // No file should have landed outside the restore directory.
+        let escapedURL = tmpRoot.appendingPathComponent("escaped.txt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: escapedURL.path),
+                       "path-traversal escape wrote a file outside the restore destination")
     }
 
     func test_malformed_header_rejects_non_kiln_file() async throws {

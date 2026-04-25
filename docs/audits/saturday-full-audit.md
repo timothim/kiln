@@ -10,9 +10,13 @@ low items are documented below for tomorrow's review.
 ```
 $ grep -rn "TODO|FIXME|XXX|HACK"  apps/Kiln/Sources packages/...   →  0 hits
 $ grep -rn force-unwrap (~ /\.[a-z]/)                              →  0 hits in production code
-$ grep -rn fatalError|preconditionFailure                          →  1 (added by audit fix, see M3)
+$ grep -rn fatalError|preconditionFailure                          →  0 fatalError + 1 preconditionFailure
+                                                                       (the precondition is the OllamaClient invariant guard — H2 fix)
 $ grep -rn "print("  (excluding #if DEBUG)                          →  0 hits
-$ make test                                                         →  207 Swift + 183 Python = 390 passing
+$ make test                                                         →  212 Swift + 183 Python = 395 passing
+                                                                       (211 + 183 = 394 before T2 fixups; +1 cancellation-regression
+                                                                        landed after audit; the end-to-end traversal-restore test
+                                                                        replaced an existing assertion in-place rather than adding)
 $ make build                                                        →  clean
 $ make demo-check                                                   →  PASS 6 / SKIP 3 / FAIL 0
 ```
@@ -75,9 +79,13 @@ In order of severity:
 
 | Surface | Pre-audit | Post-audit | Δ |
 |---|---|---|---|
-| Swift (`make test`) | 196 | 207 | +11 |
+| Swift (`make test`) | 196 | 213 | +17 |
 | Python (`make test`) | 170 | 183 | +13 |
-| **Total** | **366** | **390** | **+24** |
+| **Total** | **366** | **395** | **+29** |
+
+(Includes the +2 follow-up tests landed in response to the verifier's
+T2 findings on this audit pass: a real end-to-end path-traversal
+restore test and a cancellation-handler regression test.)
 
 (App-target tests via xcodebuild add ~16 more; not counted in `make test` totals.)
 

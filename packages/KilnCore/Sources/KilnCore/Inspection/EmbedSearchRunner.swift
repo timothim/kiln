@@ -87,27 +87,32 @@ public final class SubprocessEmbedSearchRunner: EmbedSearchRunner, @unchecked Se
 
     private func runProcess(arguments subcommandArgs: [String]) async throws -> [EmbedSearchMatch] {
         let log = self.log
-        return try await Task.detached(priority: .userInitiated) { [launcher] in
-            let process = Process()
-            let stdout = Pipe()
-            let stderr = Pipe()
+        try Task.checkCancellation()
 
-            process.executableURL = launcher.executableURL
-            process.arguments = launcher.argumentPrefix + subcommandArgs
-            if let cwd = launcher.workingDirectory {
-                process.currentDirectoryURL = cwd
-            }
-            if let env = launcher.environment {
-                process.environment = env
-            }
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = launcher.executableURL
+        process.arguments = launcher.argumentPrefix + subcommandArgs
+        if let cwd = launcher.workingDirectory {
+            process.currentDirectoryURL = cwd
+        }
+        if let env = launcher.environment {
+            process.environment = env
+        }
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            do {
-                try process.run()
-            } catch {
-                throw EmbedSearchError.launchFailed(message: error.localizedDescription)
-            }
+        struct ProcessBox: @unchecked Sendable { let p: Process }
+        let box = ProcessBox(p: process)
+
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                do {
+                    try process.run()
+                } catch {
+                    throw EmbedSearchError.launchFailed(message: error.localizedDescription)
+                }
 
             // Read stdout and stderr concurrently — verifier T3 finding
             // from PR #17. Reading sequentially (stdout first) deadlocks
@@ -177,7 +182,12 @@ public final class SubprocessEmbedSearchRunner: EmbedSearchRunner, @unchecked Se
             // future sidecar bug without scrambling the UI.
             matches.sort { $0.rank < $1.rank }
             return matches
-        }.value
+            }.value
+        } onCancel: {
+            if box.p.isRunning {
+                box.p.terminate()
+            }
+        }
     }
 
     private static func writeCorpusJSONL(rows: [EmbedSearchCorpusRow]) throws -> URL {
