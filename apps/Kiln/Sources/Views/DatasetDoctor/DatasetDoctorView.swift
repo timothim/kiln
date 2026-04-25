@@ -29,7 +29,16 @@ struct DatasetDoctorView: View {
     }
 
     private var subtitle: String {
-        "Kept \(report.chunksAfterQuality) samples from \(report.filesParsed) files."
+        let kept = classifierGateActive ? report.chunksAfterClassifierQuality : report.chunksAfterQuality
+        return "Kept \(kept) samples from \(report.filesParsed) files."
+    }
+
+    /// True when the M9.C classifier gate ran on this corpus (any
+    /// chunk landed in any bucket). When false the gate degraded to
+    /// a no-op and the funnel row hides the extra ticker so the user
+    /// doesn't see a meaningless duplicate of "Kept".
+    private var classifierGateActive: Bool {
+        report.classifierBuckets.total > 0
     }
 
     private var funnelRow: some View {
@@ -38,7 +47,14 @@ struct DatasetDoctorView: View {
             LiveCountTicker(label: "Chunks", value: report.chunksBeforeDedup)
             LiveCountTicker(label: "Exact unique", value: report.chunksAfterExactDedup)
             LiveCountTicker(label: "Near unique", value: report.chunksAfterMinHashDedup)
-            LiveCountTicker(label: "Kept", value: report.chunksAfterQuality)
+            LiveCountTicker(label: "Length-passed", value: report.chunksAfterQuality)
+            if classifierGateActive {
+                // Fourth (and final) gate, lit only when the M9.C
+                // distilled-classifier subprocess actually scored chunks
+                // — defaults to off in environments without the
+                // artifact.
+                LiveCountTicker(label: "Voice-passed", value: report.chunksAfterClassifierQuality)
+            }
         }
     }
 
