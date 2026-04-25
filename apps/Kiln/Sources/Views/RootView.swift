@@ -38,7 +38,7 @@ struct WorkspaceView: View {
             StageRouterView(model: model)
                 .frame(minWidth: Kiln.Layout.centerMinWidth)
         } detail: {
-            DetailView(project: model.selectedProject)
+            DetailView(project: model.selectedProject, model: model)
                 .navigationSplitViewColumnWidth(
                     min: Kiln.Layout.detailMinWidth,
                     ideal: Kiln.Layout.detailIdeal

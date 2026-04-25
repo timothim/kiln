@@ -24,6 +24,11 @@ final class AppModel {
     /// Audit C3: when non-nil, the Deep Curation sheet is presented
     /// over the Dataset Doctor.
     var deepCurationModel: DeepCurationModel?
+    /// Audit C5: per-project Sample Preview model. Constructed once
+    /// per ``samplePreviewModel(for:)`` call so the model survives
+    /// re-renders of the Complete detail pane. Cleared on
+    /// ``resetTraining()``.
+    private var samplePreviewModels: [Project.ID: SamplePreviewModel] = [:]
 
     /// Saved-voice library — drives the sidebar's bottom-pinned selector.
     /// Always non-nil so the selector has something to bind to at launch.
@@ -99,6 +104,7 @@ final class AppModel {
     private let ollamaClientFactory: (@MainActor () -> OllamaClient)?
     private let voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)?
     private let deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)?
+    private let sampleCompareRunnerFactory: (@MainActor () -> SampleCompareRunner)?
 
     init(
         trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
@@ -106,6 +112,7 @@ final class AppModel {
         ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil,
         voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)? = nil,
         deepCurationRunnerFactory: (@MainActor () -> DeepCurationRunner)? = nil,
+        sampleCompareRunnerFactory: (@MainActor () -> SampleCompareRunner)? = nil,
         voicesProvider: (any VoicesProvider)? = nil
     ) {
         self.trainingRunnerFactory = trainingRunnerFactory
@@ -113,6 +120,7 @@ final class AppModel {
         self.ollamaClientFactory = ollamaClientFactory
         self.voiceCoachRunnerFactory = voiceCoachRunnerFactory
         self.deepCurationRunnerFactory = deepCurationRunnerFactory
+        self.sampleCompareRunnerFactory = sampleCompareRunnerFactory
         if let voicesProvider {
             self.voicesModel = VoicesModel(provider: voicesProvider)
         } else {
@@ -391,6 +399,29 @@ final class AppModel {
         deepCurationModel = nil
     }
 
+    // MARK: - Sample Preview (Audit C5)
+
+    /// Lazily construct (or return) the Sample Preview model for a
+    /// project. Returns nil when the project has no training report —
+    /// the Complete detail pane only renders for completed projects so
+    /// this is conservative defense.
+    func samplePreviewModel(for projectID: Project.ID) -> SamplePreviewModel? {
+        if let existing = samplePreviewModels[projectID] {
+            return existing
+        }
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else {
+            return nil
+        }
+        guard let report = projects[idx].trainingReport else { return nil }
+        let model = SamplePreviewModel(
+            runner: resolveSampleCompareRunner(),
+            baseModel: Self.defaultBaseModel(for: projects[idx].modelSize),
+            adapterURL: report.adapterURL
+        )
+        samplePreviewModels[projectID] = model
+        return model
+    }
+
     // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
@@ -438,6 +469,14 @@ final class AppModel {
         }
         let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
         return SubprocessDeepCurationRunner(launcher: launcher)
+    }
+
+    private func resolveSampleCompareRunner() -> SampleCompareRunner {
+        if let factory = sampleCompareRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessSampleCompareRunner(launcher: launcher)
     }
 
     /// Best-effort resolver for a llama.cpp checkout. Respects the
