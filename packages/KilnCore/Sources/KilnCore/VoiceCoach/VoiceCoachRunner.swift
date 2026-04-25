@@ -147,87 +147,114 @@ public final class SubprocessVoiceCoachRunner: VoiceCoachRunner, @unchecked Send
             "--input-file", tmp.path,
         ]
 
+        // Pre-launch cancellation check + SIGTERM (with 5 s grace →
+        // SIGKILL) hook on outer-task cancellation. ``Task.detached``
+        // does not propagate the parent's cancellation, so the
+        // ``withTaskCancellationHandler`` ``onCancel`` runs on the
+        // cancelling task and SIGTERMs the child synchronously, then
+        // escalates to SIGKILL if the child is still alive after the
+        // grace window. Same pattern as DistilledClassifierRunner with
+        // OllamaExporter's escalation.
+        try Task.checkCancellation()
+
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = launcher.executableURL
+        process.arguments = launcher.argumentPrefix + args
+        if let cwd = launcher.workingDirectory {
+            process.currentDirectoryURL = cwd
+        }
+        var env = launcher.environment ?? ProcessInfo.processInfo.environment
+        if let apiKey, !apiKey.isEmpty {
+            env["ANTHROPIC_API_KEY"] = apiKey
+        }
+        process.environment = env
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        struct ProcessBox: @unchecked Sendable { let p: Process }
+        let box = ProcessBox(p: process)
+
         let log = self.log
-        return try await Task.detached(priority: .userInitiated) { [launcher] in
-            let process = Process()
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.executableURL = launcher.executableURL
-            process.arguments = launcher.argumentPrefix + args
-            if let cwd = launcher.workingDirectory {
-                process.currentDirectoryURL = cwd
-            }
-            // Inherit launcher env, then thread the API key through if
-            // the caller supplied one. The sidecar never reads from
-            // disk for the key — env or nothing.
-            var env = launcher.environment ?? ProcessInfo.processInfo.environment
-            if let apiKey, !apiKey.isEmpty {
-                env["ANTHROPIC_API_KEY"] = apiKey
-            }
-            process.environment = env
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            do {
-                try process.run()
-            } catch {
-                throw VoiceCoachError.launchFailed(message: error.localizedDescription)
-            }
-
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-
-            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
-            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
-
-            var report: VoiceReport? = nil
-            var sidecarError: VoiceCoachError? = nil
-            for raw in stdoutText.split(separator: "\n", omittingEmptySubsequences: true) {
-                let line = String(raw)
-                guard let data = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let event = obj["event"] as? String
-                else {
-                    log.debug("voice-coach: skipping unparseable line: \(line, privacy: .public)")
-                    continue
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                do {
+                    try process.run()
+                } catch {
+                    throw VoiceCoachError.launchFailed(message: error.localizedDescription)
                 }
-                switch event {
-                case "voice_report":
-                    if let md = obj["markdown"] as? String,
-                       let model = obj["model"] as? String {
-                        report = VoiceReport(markdown: md, modelID: model)
+
+                // Drain stdout and stderr concurrently to EOF — sequential
+                // reads would deadlock if the child filled the 64 KB stderr
+                // pipe buffer before stdout closed (e.g. an anthropic-SDK
+                // traceback on a malformed API response).
+                async let stdoutTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }.value
+                async let stderrTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }.value
+                let stdoutData = await stdoutTask
+                let stderrData = await stderrTask
+
+                process.waitUntilExit()
+
+                let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
+                let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+
+                var report: VoiceReport? = nil
+                var sidecarError: VoiceCoachError? = nil
+                for raw in stdoutText.split(separator: "\n", omittingEmptySubsequences: true) {
+                    let line = String(raw)
+                    guard let data = line.data(using: .utf8),
+                          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let event = obj["event"] as? String
+                    else {
+                        log.debug("voice-coach: skipping unparseable line: \(line, privacy: .public)")
+                        continue
                     }
-                case "error":
-                    if (obj["recoverable"] as? Bool) == false {
-                        let code = obj["code"] as? String ?? "internal"
-                        let message = obj["message"] as? String ?? ""
-                        // Prefer the typed missingAPIKey error so the UI
-                        // can render the correct CTA.
-                        if code == "data_invalid" && message.contains("ANTHROPIC_API_KEY") {
-                            sidecarError = .missingAPIKey
-                        } else {
-                            sidecarError = .sidecarError(code: code, message: message)
+                    switch event {
+                    case "voice_report":
+                        if let md = obj["markdown"] as? String,
+                           let model = obj["model"] as? String {
+                            report = VoiceReport(markdown: md, modelID: model)
                         }
+                    case "error":
+                        if (obj["recoverable"] as? Bool) == false {
+                            let code = obj["code"] as? String ?? "internal"
+                            let message = obj["message"] as? String ?? ""
+                            if code == "data_invalid" && message.contains("ANTHROPIC_API_KEY") {
+                                sidecarError = .missingAPIKey
+                            } else {
+                                sidecarError = .sidecarError(code: code, message: message)
+                            }
+                        }
+                    default:
+                        continue
                     }
-                default:
-                    continue
+                }
+
+                if let sidecarError {
+                    throw sidecarError
+                }
+                if process.terminationStatus != 0 {
+                    throw VoiceCoachError.unexpectedExit(
+                        code: process.terminationStatus,
+                        stderrTail: String(stderrText.suffix(4096))
+                    )
+                }
+                guard let report else {
+                    throw VoiceCoachError.emptyReport
+                }
+                return report
+            }.value
+        } onCancel: {
+            if box.p.isRunning {
+                box.p.terminate()
+                let deadline = DispatchTime.now() + .seconds(5)
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline) {
+                    if box.p.isRunning {
+                        kill(box.p.processIdentifier, SIGKILL)
+                    }
                 }
             }
-
-            if let sidecarError {
-                throw sidecarError
-            }
-            if process.terminationStatus != 0 {
-                throw VoiceCoachError.unexpectedExit(
-                    code: process.terminationStatus,
-                    stderrTail: String(stderrText.suffix(4096))
-                )
-            }
-            guard let report else {
-                throw VoiceCoachError.emptyReport
-            }
-            return report
-        }.value
+        }
     }
 }

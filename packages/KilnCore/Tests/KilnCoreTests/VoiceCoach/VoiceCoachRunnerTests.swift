@@ -153,4 +153,48 @@ final class VoiceCoachRunnerTests: XCTestCase {
         let decoded = try JSONDecoder().decode(VoiceCoachInput.self, from: encoded)
         XCTAssertEqual(decoded.styleSignature["label"], .string("Tim"))
     }
+
+    // MARK: - Cancellation retrofit (Saturday-final, fixup/saturday-cancellation)
+
+    func test_runner_terminates_subprocess_on_outer_task_cancellation() async throws {
+        // Spawn a fake script that sleeps for 30 s. Without the
+        // withTaskCancellationHandler retrofit the Task.detached body
+        // never sees the cancellation and waitUntilExit hangs.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-vc-cancel-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("fake-slow-vc.sh")
+        let body = """
+        #!/bin/bash
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        sleep 30
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script,
+            argumentPrefix: [],
+            workingDirectory: dir,
+            environment: nil
+        )
+        let runner = SubprocessVoiceCoachRunner(launcher: launcher)
+
+        let task = Task {
+            try await runner.generate(
+                input: sampleInput(),
+                mode: .cloud,
+                apiKey: "sk-ant-test"
+            )
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        task.cancel()
+        let start = Date()
+        _ = try? await task.value
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 4.0, "voice-coach runner did not honour cancellation; took \(elapsed) s")
+    }
 }
