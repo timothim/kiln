@@ -144,4 +144,20 @@ Format for every entry:
 - **Reason:** The token surface is small (four palette primaries, seven type tokens, six spacing tokens, three radii, plus layout/motion/icon groupings that don't round-trip through DTCG anyway). A hand-crafted projection costs little, reads well, and keeps the Swift file idiomatic where a generator would either lose nuance or require maintenance of its own template language. The discipline — "changes start in DESIGN.md" — is enforceable via the pre-commit lint hook, which is stronger than any convention attached to a generated file.
 - **Reversible?** Yes. Both files exist; if the token surface ever grows large enough to justify a generator, a build step can regenerate `DesignSystem.swift` from `docs/design/tokens.dtcg.json` and this decision flips from (c) to (b) with no source-of-truth change.
 
+## 11. M9.A — local encrypted backup design (CryptoKit ChaChaPoly + PBKDF2)
+
+- **Date:** 2026-04-25
+- **Context:** M9.A delivers opt-in local backup of a Kiln project's on-disk state — corpus, adapter weights, manifest. CLAUDE.md scope guardrails explicitly forbid cloud sync; the M9 plan kept cloud upload out of M9.A and limited the milestone to writing encrypted bundles under `~/Documents/Kiln/Backups/`. The design here is what shipped, not the broader M9.A plan.
+- **Options considered:**
+  - **(a)** No encryption — write the bundle plaintext, document that the user is responsible for full-disk encryption. Trivially simple, but a Time Machine snapshot or an iCloud-Drive-synced ~/Documents leaks the user's voice corpus to anywhere those backups travel. Hard veto from the threat model.
+  - **(b)** libsodium / age (modern AEAD, X25519-style asymmetric for re-encryption). Stronger primitives but adds a vendored C dependency (libsodium) or a brittle SwiftPM package. For a single-machine, single-user passphrase flow there's no asymmetric requirement.
+  - **(c)** CryptoKit `ChaChaPoly` (Apple's first-party AEAD) with PBKDF2-HMAC-SHA256 from CommonCrypto for passphrase stretching. Both ship with the OS, no vendored crypto, no third-party dep, deterministic API across macOS 14+. Argon2id would be stronger than PBKDF2 for password stretching but isn't available in CommonCrypto and would require a vendored dep we'd then need to audit.
+- **Choice:** (c). Single-file bundle with a fixed-layout header (8-byte magic `KILN0001`, 16-byte salt, 12-byte nonce, ChaChaPoly ciphertext + 16-byte tag). PBKDF2-HMAC-SHA256 at 200k iterations derives the 32-byte symmetric key from passphrase + per-bundle salt. The encrypted payload is JSON-encoded `BackupPayload` (path + base64 contents per file).
+- **Reason:**
+  - **No third-party crypto dep.** Everything imports from CryptoKit + CommonCrypto, both in the OS. The verifier subagent doesn't have to audit a vendored sodium build.
+  - **Single-file bundle keeps restore trivial.** The user can copy a `.kilnbackup` to a USB stick and restore on a fresh laptop with just the passphrase. A streaming tar layout would be more efficient for >100 MB projects but adds restore complexity (resumable, partial-tar) we don't need yet.
+  - **Passphrase in Keychain, never in a bundle.** `KeychainPassphraseStore` writes the user's passphrase to the macOS login keychain so subsequent backups don't re-prompt. The bundle contains only ciphertext + nonce + salt — losing the passphrase means losing the backup, with no recovery path. The Settings panel makes that consequence explicit at first use.
+  - **Default off.** The toggle in `BackupSettingsView` is off out of the box. M9.A never writes a bundle without the user explicitly flipping the switch and clicking "Back up now."
+- **Reversible?** Yes. The bundle format is versioned (`formatVersion: 1` inside the encrypted payload, `KILN0001` magic in the header). Migrating to Argon2id, asymmetric keys, or a streaming tar layout is a `KILN0002` bump with both readers in `BackupService` for one milestone.
+
 <!-- Append new decisions below as the sprint progresses. Number sequentially. Do not edit entries above. -->

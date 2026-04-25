@@ -21,11 +21,11 @@ import sys
 from typing import Any, IO
 
 EVENT_TYPES: frozenset[str] = frozenset(
-    {"ready", "progress", "sample", "checkpoint", "error", "done", "generation"}
+    {"ready", "progress", "sample", "checkpoint", "error", "done", "generation", "classification"}
 )
 
 STAGES: frozenset[str] = frozenset(
-    {"sft", "dpo", "fuse", "gguf", "ollama", "generation"}
+    {"sft", "dpo", "fuse", "gguf", "ollama", "generation", "classify"}
 )
 
 ERROR_CODES: frozenset[str] = frozenset(
@@ -157,6 +157,33 @@ def generation(
     if prompt_id is not None:
         event["prompt_id"] = prompt_id
     return event
+
+
+def classification(
+    request_id: str,
+    kind: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Distilled-classifier inference result (M9.C ``classify`` subcommand).
+
+    ``kind`` is one of ``"quality" | "preference" | "style"``. ``payload`` is
+    the classifier's typed result — schema varies by kind:
+
+    - ``quality``  → ``{"score": float, "bucket": "keep"|"chosen_only"|"discard"}``
+    - ``preference`` → ``{"voice_score": float}``
+    - ``style``    → ``{"style_descriptors": dict, "distinctive_ngrams": list[str], "style_card_md": str}``
+
+    Kept as one event with a ``kind`` discriminator (rather than three event
+    types) so the Swift decoder reuses one struct across all three classifier
+    subprocesses."""
+    if kind not in ("quality", "preference", "style"):
+        raise ValueError(f"classification kind must be quality|preference|style, got {kind!r}")
+    return {
+        "event": "classification",
+        "request_id": str(request_id),
+        "kind": kind,
+        "payload": payload,
+    }
 
 
 def emit(event: dict[str, Any], stream: IO[str] | None = None) -> None:

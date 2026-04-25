@@ -67,11 +67,12 @@ def test_sigterm_forwards_and_exits_under_5s(
     stdout_tail, _stderr = proc.communicate(timeout=10.0)
     elapsed = time.monotonic() - t0
 
-    # Threshold widened from 5.0s to 10.0s (M9.B, 2026-04-25). Adding
-    # sentence-transformers to the sidecar's declared deps made cold-start
-    # import resolution noticeably slower; the 5s budget was the
-    # *trainer-flush* budget, not the *cold-start + flush* budget. Once
-    # the sidecar is warm the SIGTERM round-trip is still ~2-3s.
+    # Threshold widened from 5.0s to 10.0s (M9.C and M9.B, 2026-04-25).
+    # Adding scikit-learn + sentence-transformers to the sidecar's
+    # declared deps made cold-start import resolution noticeably slower;
+    # the 5s budget was the *trainer-flush* budget, not the
+    # *cold-start + flush* budget. Once the sidecar is warm the SIGTERM
+    # round-trip is still ~2-3s.
     assert elapsed < 10.0, f"sidecar took {elapsed:.2f}s to exit after SIGTERM"
     assert proc.returncode == 0, f"expected clean exit, got {proc.returncode}"
 
