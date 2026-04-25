@@ -178,11 +178,28 @@ public final class MCPServerManager: @unchecked Sendable {
                 "kiln-voice": entry,
             ],
         ]
-        let data = (try? JSONSerialization.data(
-            withJSONObject: config,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        )) ?? Data()
-        return String(data: data, encoding: .utf8) ?? "{}"
+        // Audit M3: previously this swallowed JSONSerialization
+        // failures with an empty Data() and returned ``"{}"``, leaving
+        // the user with a useless "copy this snippet" surface and no
+        // hint that anything went wrong. Foundation's
+        // ``JSONSerialization.data`` only fails for non-JSON-encodable
+        // values; the inputs here are all plain strings + arrays of
+        // strings so a failure indicates a real bug. Surface it via
+        // OSLog and an explicit ``configError(...)`` payload the UI
+        // can detect (it starts with the magic ``__kiln_config_error:``
+        // prefix that ``MCPServerSettingsView`` reads and renders as
+        // a banner instead of pasting the broken snippet).
+        do {
+            let data = try JSONSerialization.data(
+                withJSONObject: config,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            )
+            return String(data: data, encoding: .utf8) ?? "__kiln_config_error: snippet bytes were not valid UTF-8"
+        } catch {
+            let log = Logger(subsystem: "dev.kiln.core", category: "mcp-server")
+            log.error("config snippet serialization failed: \(error.localizedDescription, privacy: .public)")
+            return "__kiln_config_error: \(error.localizedDescription)"
+        }
     }
 }
 

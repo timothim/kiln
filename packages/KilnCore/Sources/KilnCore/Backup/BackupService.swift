@@ -272,6 +272,18 @@ public final class DiskBackupService: BackupService, @unchecked Sendable {
             throw BackupError.passphraseTooShort
         }
         var derived = [UInt8](repeating: 0, count: BackupConstants.keyLengthBytes)
+        // Audit M2: zero the derived key bytes when the function exits
+        // — by-value scope erasure isn't enough for sensitive material;
+        // the heap allocation can persist after the array is freed.
+        // ``defer`` runs after the ``return`` so the SymmetricKey copy
+        // captured by Data(derived) keeps its own copy of the bytes.
+        defer {
+            derived.withUnsafeMutableBytes { buf in
+                if let base = buf.baseAddress {
+                    memset(base, 0, buf.count)
+                }
+            }
+        }
         let status = passphraseData.withUnsafeBytes { passBuf -> Int32 in
             let passPtr = passBuf.bindMemory(to: Int8.self).baseAddress
             return salt.withUnsafeBytes { saltBuf -> Int32 in
