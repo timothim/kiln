@@ -1,0 +1,1 @@
+I need to embed the full labels file content in my final agent message. Let me check the file size and read it in portions to include verbatim in my response.The labels file is 415KB / 1500 lines. I need to emit the full contents inline in my final agent message between `QUALITY_LABELS_BEGIN` and `

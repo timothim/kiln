@@ -22,7 +22,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CORPUS = REPO / "tests" / "fixtures" / "sample_corpus"
 SEED = 42
-TARGET = 500
+DEFAULT_SIZE = 500
 
 
 LITERARY = [
@@ -255,7 +255,7 @@ def slice_windows(text: str, max_chars: int = 400, min_chars: int = 60) -> list[
     return [w for w in windows if min_chars <= len(w) <= 1000]
 
 
-def load_high_quality() -> list[str]:
+def load_high_quality(size: int) -> list[str]:
     out: list[str] = []
     # Sample corpus: try multiple window sizes to extract more distinct snippets
     for f in sorted(CORPUS.glob("[0-9][0-9]-*.md")):
@@ -270,11 +270,39 @@ def load_high_quality() -> list[str]:
         out.extend(slice_windows(f.read_text(errors="ignore"), max_chars=300, min_chars=50))
     for f in CORPUS.glob("*.ts"):
         out.extend(slice_windows(f.read_text(errors="ignore"), max_chars=300, min_chars=50))
+    # For large runs (size > 500), pull voice-bearing synthetic paragraphs and
+    # conversational/reflective style templates from build_style_input so the
+    # high-quality bucket does not saturate around ~280 rows. Filter to the
+    # quality-classifier's ≤1000-char window.
+    if size > DEFAULT_SIZE:
+        try:
+            from build_style_input import (  # type: ignore[import-not-found]
+                CASUAL_TEMPLATES,
+                FILLS,
+                POETIC_TEMPLATES,
+                REFLECTIVE_TEMPLATES,
+                extend_literary_synthetic,
+            )
+        except ImportError:
+            pass
+        else:
+            out.extend([t for t in extend_literary_synthetic() if 40 <= len(t) <= 1000])
+            rnd = random.Random(SEED + 3)
+            for tmpl in CASUAL_TEMPLATES + REFLECTIVE_TEMPLATES + POETIC_TEMPLATES:
+                for _ in range(25):
+                    rendered = tmpl
+                    for key, choices in FILLS.items():
+                        placeholder = "{" + key + "}"
+                        while placeholder in rendered:
+                            rendered = rendered.replace(placeholder, rnd.choice(choices), 1)
+                    if 60 <= len(rendered) <= 1000:
+                        out.append(rendered)
     random.shuffle(out)
-    return out[:200] + LITERARY
+    high_cap = max(200, size // 3)
+    return out[:high_cap] + LITERARY
 
 
-def load_low_quality() -> list[str]:
+def load_low_quality(size: int) -> list[str]:
     rnd = random.Random(SEED + 1)
     fills = {
         "d": ["Mar 14", "Apr 3", "May 1", "Jun 22", "Jul 5", "Aug 18", "Sep 9", "Oct 27", "Nov 3", "Dec 15"],
@@ -297,9 +325,13 @@ def load_low_quality() -> list[str]:
         "content": ["dashboard", "profile", "feed", "settings", "inbox", "cart", "history"],
         "link": ["<https://click.tracking.example>", "<here>", "<this link>"],
     }
+    # Scale per-template fills with the target size so the raw pool comfortably
+    # exceeds the desired low-quality slice even after dedup. 12 at size=500,
+    # ~40 at size=1500 keeps the pre-dedup pool 3x the truncation cap.
+    fills_per_template = max(12, size // 40)
     out: list[str] = []
     for pat in LOW_QUALITY_PATTERNS:
-        for _ in range(12):
+        for _ in range(fills_per_template):
             s = pat
             for k, choices in fills.items():
                 placeholder = "{" + k + "}"
@@ -307,11 +339,26 @@ def load_low_quality() -> list[str]:
                     s = s.replace(placeholder, rnd.choice(choices), 1)
             out.append(s)
     random.Random(SEED + 1).shuffle(out)
-    return out[:220]
+    low_cap = max(220, int(size * 0.45))
+    return out[:low_cap]
 
 
-def load_ambiguous() -> list[str]:
+def load_ambiguous(size: int) -> list[str]:
     out: list[str] = list(AMBIGUOUS_SEEDS)
+    # For large runs, combine ambiguous seeds into 2-3 fragment paragraphs
+    # so we can stretch the small seed pool further without repeating verbatim.
+    if size > DEFAULT_SIZE:
+        rnd = random.Random(SEED + 4)
+        seeds = list(AMBIGUOUS_SEEDS)
+        for _ in range(8):
+            rnd.shuffle(seeds)
+            i = 0
+            while i + 1 < len(seeds):
+                group = rnd.choice([2, 2, 3])
+                chunk = " ".join(seeds[i : i + group])
+                if 60 <= len(chunk) <= 1000:
+                    out.append(chunk)
+                i += group
     # edge_cases subdir — whatever is there gets sliced (short windows)
     edge = CORPUS / "edge_cases"
     if edge.is_dir():
@@ -345,17 +392,28 @@ def load_ambiguous() -> list[str]:
             if isinstance(txt, str) and 30 <= len(txt) <= 1000:
                 out.append(txt)
     random.Random(SEED + 2).shuffle(out)
-    return out[:200]
+    amb_cap = max(200, int(size * 0.35))
+    return out[:amb_cap]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, type=pathlib.Path)
+    ap.add_argument(
+        "--size",
+        type=int,
+        default=DEFAULT_SIZE,
+        help=f"target number of unique rows (default {DEFAULT_SIZE})",
+    )
     args = ap.parse_args()
 
     random.seed(SEED)
     rows: list[dict] = []
-    for text in load_high_quality() + load_low_quality() + load_ambiguous():
+    for text in (
+        load_high_quality(args.size)
+        + load_low_quality(args.size)
+        + load_ambiguous(args.size)
+    ):
         rid = sha_id(text)
         rows.append({"request_id": rid, "text": text[:1000]})
 
@@ -367,9 +425,9 @@ def main() -> None:
             seen.add(r["request_id"])
             unique.append(r)
 
-    if len(unique) < TARGET:
-        print(f"warn: only {len(unique)} unique rows; target was {TARGET}", file=sys.stderr)
-    unique = unique[:TARGET]
+    if len(unique) < args.size:
+        print(f"warn: only {len(unique)} unique rows; target was {args.size}", file=sys.stderr)
+    unique = unique[: args.size]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w") as f:

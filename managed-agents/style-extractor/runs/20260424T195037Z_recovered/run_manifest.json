@@ -1,0 +1,27 @@
+{
+  "component": "style-extractor",
+  "run_type": "full-run",
+  "opus_model": "claude-opus-4-7",
+  "started_at": "2026-04-24T13:29:15Z",
+  "finished_at": "2026-04-24T13:45:58Z",
+  "input_count": 1500,
+  "profiles_written": 1500,
+  "skipped_count": 0,
+  "axis_means": {
+    "formality": 0.5983,
+    "verbosity": 0.5377,
+    "warmth": 0.327,
+    "hedging": 0.3013,
+    "humor": 0.0739,
+    "directness": 0.5415
+  },
+  "aborted": false,
+  "recovered_via": "session files (GET /v1/files)",
+  "recovered_at": "2026-04-24T19:50:37Z",
+  "recovery_source": {
+    "session_id": "sesn_011CaNgANfPENrGExXXfRGop",
+    "labels_file_id": "file_011CaNhVBc26ZTP86887Cq9F",
+    "labels_size_bytes": 690424,
+    "manifest_file_id": "file_011CaNhTvg528L28pLUResuU"
+  }
+}

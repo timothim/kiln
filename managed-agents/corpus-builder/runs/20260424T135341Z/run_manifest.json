@@ -1,0 +1,16 @@
+{
+  "component": "quality-classifier",
+  "run_type": "full-run",
+  "opus_model": "claude-opus-4-7",
+  "started_at": "2026-04-24T13:29:03Z",
+  "finished_at": "2026-04-24T13:39:30Z",
+  "input_count": 1500,
+  "labels_written": 1500,
+  "skipped_count": 0,
+  "score_distribution": {
+    "low_0_0_3": 647,
+    "mid_0_3_0_7": 550,
+    "high_0_7_1_0": 303
+  },
+  "aborted": false
+}
