@@ -18,6 +18,69 @@ final class AppModel {
     /// Always non-nil so the selector has something to bind to at launch.
     let voicesModel: VoicesModel
 
+    /// Cloud-features settings (Audit C1). The Settings scene binds to
+    /// this directly. Lazy so test paths that never open Settings
+    /// don't materialise the Keychain probe at construction time.
+    private var _cloudSettings: CloudFeaturesSettings?
+    var cloudSettings: CloudFeaturesSettings {
+        if let s = _cloudSettings { return s }
+        let s = CloudFeaturesSettings()
+        _cloudSettings = s
+        return s
+    }
+
+    /// Local backup settings panel model. Lazy for the same reason.
+    private var _backupSettingsModel: BackupSettingsModel?
+    var backupSettingsModel: BackupSettingsModel {
+        if let m = _backupSettingsModel { return m }
+        let m = BackupSettingsModel(projectRootProvider: { [weak self] in
+            self?.selectedProject?.preparedDatasetURL?.deletingLastPathComponent()
+        })
+        _backupSettingsModel = m
+        return m
+    }
+
+    /// Long-running MCP server lifecycle owner. Lazy so tests don't
+    /// inadvertently keep a stdio server alive.
+    private var _mcpServerManager: MCPServerManager?
+    var mcpServerManager: MCPServerManager {
+        if let m = _mcpServerManager { return m }
+        let m = MCPServerManager(
+            launcher: TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        )
+        _mcpServerManager = m
+        return m
+    }
+
+    /// MCP Settings panel model — wires the manager + cloud settings.
+    private var _mcpServerSettingsModel: MCPServerSettingsModel?
+    var mcpServerSettingsModel: MCPServerSettingsModel {
+        if let m = _mcpServerSettingsModel { return m }
+        let m = MCPServerSettingsModel(manager: mcpServerManager, settings: cloudSettings)
+        _mcpServerSettingsModel = m
+        return m
+    }
+
+    /// Voice name advertised by the MCP server. Defaults to the user's
+    /// account slug; the snippet in Claude.app's config will reference
+    /// this exact value.
+    var defaultMCPVoiceName: String {
+        // Prefer the slug of the currently selected project (matches
+        // the export naming convention) so the MCP tool maps to the
+        // voice the user just trained. Otherwise fall back to a
+        // username-derived slug. Strips spaces and special characters
+        // so the resulting name is a valid Ollama tag.
+        if let project = selectedProject {
+            return "kiln-\(project.slug)"
+        }
+        let raw = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
+        let slug = raw.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined(separator: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return slug.isEmpty ? "kiln-user" : "kiln-\(slug)"
+    }
+
     /// Injected so tests can supply a fake TrainingRunner. Nil in the default
     /// init path — production wiring resolves the Python sidecar launcher.
     private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
