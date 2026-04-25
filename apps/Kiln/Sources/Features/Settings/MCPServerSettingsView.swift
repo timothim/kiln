@@ -125,11 +125,12 @@ struct MCPServerSettingsView: View {
             }
         case .running:
             HStack(spacing: Kiln.Space.xs) {
-                Circle().fill(.green).frame(width: 8, height: 8)
+                LiveStatusDot()
                 Text("Running").font(Kiln.Font.body)
                 Spacer(minLength: Kiln.Space.m)
                 Button("Stop") { model.stop() }
                     .buttonStyle(.bordered)
+                    .accessibilityHint("Shuts down the MCP server. Claude.app loses access to your voice.")
             }
         }
     }
@@ -170,5 +171,61 @@ struct MCPServerSettingsView: View {
         case .stopped, .starting:
             EmptyView()
         }
+    }
+}
+
+// MARK: - Live status dot
+
+/// 8-pt green dot that breathes via `Kiln.Motion.statusPulse`. The brief
+/// asked for a pulse on running indicators so they read as alive rather
+/// than as static success — same family as the Growing Model gauge ember
+/// pulse, just slower and quieter. Reduce Motion → static dot, no pulse.
+private struct LiveStatusDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                staticDot
+            } else {
+                animatedDot
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var staticDot: some View {
+        Circle()
+            .fill(.green)
+            .frame(width: 8, height: 8)
+            .shadow(color: .green.opacity(0.4), radius: 3)
+    }
+
+    private var animatedDot: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let phase = pulsePhase(at: context.date)
+            ZStack {
+                // Outer halo — fades in/out so the dot feels like it's
+                // breathing without ever attracting active attention.
+                Circle()
+                    .fill(Color.green.opacity(0.18 * phase))
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(0.85 + 0.25 * phase)
+                Circle()
+                    .fill(.green)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: .green.opacity(0.3 + 0.3 * phase), radius: 2 + 2 * phase)
+            }
+        }
+        .frame(width: 14, height: 14)
+    }
+
+    /// 0...1 sine wave at a 1.4-second period, matching
+    /// `Kiln.Motion.statusPulse`. Wall-clock-time-based so the rhythm
+    /// stays steady through re-renders.
+    private func pulsePhase(at date: Date) -> Double {
+        let t = date.timeIntervalSinceReferenceDate
+        let omega = 2.0 * .pi / 1.4
+        return 0.5 + 0.5 * sin(t * omega)
     }
 }
