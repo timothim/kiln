@@ -51,6 +51,12 @@ public struct TrainingRequest: Sendable, Hashable {
     /// the Python sidecar ignores it. M9+ will teach the trainer to honor
     /// persona slicing — at that point the runner's arg-builder emits a flag.
     public let voiceSplit: VoiceSplit?
+    /// PR #23 — when true the sidecar runs the post-checkpoint Training
+    /// Advisor (Opus 4.7 cloud or local Qwen via Ollama). Off by default.
+    public let enableAdvisor: Bool
+    /// Either ``"cloud"`` (Opus 4.7) or ``"local"`` (Qwen via Ollama).
+    /// Ignored when ``enableAdvisor`` is false.
+    public let advisorMode: String
 
     public init(
         datasetURL: URL,
@@ -61,7 +67,9 @@ public struct TrainingRequest: Sendable, Hashable {
         itersOverride: Int? = nil,
         trainerModule: String? = nil,
         trainerEntry: String? = nil,
-        voiceSplit: VoiceSplit? = nil
+        voiceSplit: VoiceSplit? = nil,
+        enableAdvisor: Bool = false,
+        advisorMode: String = "cloud"
     ) {
         self.datasetURL = datasetURL
         self.runDir = runDir
@@ -72,6 +80,8 @@ public struct TrainingRequest: Sendable, Hashable {
         self.trainerModule = trainerModule
         self.trainerEntry = trainerEntry
         self.voiceSplit = voiceSplit
+        self.enableAdvisor = enableAdvisor
+        self.advisorMode = advisorMode
     }
 
     public func withVoiceSplit(_ split: VoiceSplit?) -> TrainingRequest {
@@ -84,7 +94,9 @@ public struct TrainingRequest: Sendable, Hashable {
             itersOverride: itersOverride,
             trainerModule: trainerModule,
             trainerEntry: trainerEntry,
-            voiceSplit: split
+            voiceSplit: split,
+            enableAdvisor: enableAdvisor,
+            advisorMode: advisorMode
         )
     }
 }
@@ -186,6 +198,7 @@ public enum TrainingEvent: Sendable, Hashable {
     case progress(TrainingProgress)
     case sample(TrainingSample)
     case checkpoint(path: URL, iter: Int, best: Bool?)
+    case advisorObservation(iter: Int, content: String, modelID: String)
     case done(artifact: URL, interrupted: Bool)
     case error(TrainingError)
 }
@@ -208,6 +221,7 @@ extension TrainingEvent: Decodable {
         case tokensPerSec = "tokens_per_s"
     }
     private enum CheckpointKeys: String, CodingKey { case path, iter, best }
+    private enum AdvisorKeys: String, CodingKey { case iter, content, model }
     private enum DoneKeys: String, CodingKey { case artifact, interrupted }
     private enum ErrorKeys: String, CodingKey { case code, message, recoverable }
 
@@ -248,6 +262,14 @@ extension TrainingEvent: Decodable {
                 path: URL(fileURLWithPath: path),
                 iter: try c.decode(Int.self, forKey: .iter),
                 best: try c.decodeIfPresent(Bool.self, forKey: .best)
+            )
+
+        case "advisor_observation":
+            let c = try decoder.container(keyedBy: AdvisorKeys.self)
+            self = .advisorObservation(
+                iter: try c.decode(Int.self, forKey: .iter),
+                content: try c.decode(String.self, forKey: .content),
+                modelID: try c.decode(String.self, forKey: .model)
             )
 
         case "done":

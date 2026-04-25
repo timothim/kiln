@@ -129,11 +129,20 @@ final class AppModel {
         let resolvedSplit = projects[idx].voiceSplit
 
         let runDir = Self.runDirectory(for: projectID)
+        // PR #23 Training Advisor wire — read the user's "Enable Training
+        // Advisor" toggle directly from UserDefaults so the AppModel
+        // doesn't depend on the CloudFeaturesSettings type that ships
+        // on feat/voice-coach. After both PRs merge into main the
+        // CloudFeaturesSettings reads/writes the same defaults keys.
+        let advisorEnabled = UserDefaults.standard.bool(forKey: "trainingAdvisorEnabled")
+        let advisorLocal = UserDefaults.standard.bool(forKey: "voiceCoachLocalMode")
         let request = TrainingRequest(
             datasetURL: datasetURL,
             runDir: runDir,
             model: Self.defaultBaseModel(for: projects[idx].modelSize),
-            voiceSplit: resolvedSplit
+            voiceSplit: resolvedSplit,
+            enableAdvisor: advisorEnabled,
+            advisorMode: advisorLocal ? "local" : "cloud"
         )
         let model = TrainModel(runner: resolveTrainingRunner())
         trainModel = model

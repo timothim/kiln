@@ -129,6 +129,19 @@ def run(args: argparse.Namespace) -> int:
             path=str(args.sample_prompts_file),
         )
 
+    advisor_state: _AdvisorState | None = None
+    if getattr(args, "enable_advisor", False):
+        advisor_state = _AdvisorState(
+            mode=getattr(args, "advisor_mode", "cloud"),
+            iter_total=iters,
+            advisor_entry=getattr(args, "advisor_entry", None),
+        )
+        runtime.log(
+            "training advisor enabled",
+            mode=advisor_state.mode,
+            iters=iters,
+        )
+
     # (7) install SIGTERM handler and spawn
     triggered = runtime.install_sigterm_handler()
     try:
@@ -157,13 +170,20 @@ def run(args: argparse.Namespace) -> int:
     threading.Thread(target=_drain, args=(proc.stderr, err_q), daemon=True).start()
 
     def _on_checkpoint(it: int, adapter_path: str) -> None:
-        _emit_samples_after_checkpoint(
+        captured_samples = _emit_samples_after_checkpoint(
             adapter_path=adapter_path,
             iter=it,
             model=args.model,
             sampler_entry=args.sampler_entry,
             prompts_file=args.sample_prompts_file,
         )
+        if advisor_state is not None and captured_samples:
+            _emit_advisor_observation_after_checkpoint(
+                state=advisor_state,
+                iter_now=it,
+                samples=captured_samples,
+                loss_trajectory=handler.loss_trajectory,
+            )
 
     handler = _LineHandler(stage="sft", on_checkpoint=_on_checkpoint)
     interrupted = False
@@ -245,6 +265,10 @@ class _LineHandler:
         self._last_train_loss: float | None = None
         self.last_checkpoint: str | None = None
         self._on_checkpoint = on_checkpoint
+        # Saturday-final: the Training Advisor consumes a rolling
+        # window of recent loss values to anchor its observation. We
+        # capture every train-iter loss; the consumer truncates.
+        self.loss_trajectory: list[float] = []
 
     def handle(self, text: str) -> None:
         m_save = _RE_SAVE.search(text)
@@ -275,6 +299,7 @@ class _LineHandler:
             it = int(m_train.group(1))
             loss = float(m_train.group(2))
             self._last_train_loss = loss
+            self.loss_trajectory.append(loss)
             kwargs: dict[str, Any] = {"stage": self.stage, "iter": it, "loss": loss}
             m_tps = _RE_TOKENS_PER_S.search(text)
             if m_tps:
@@ -397,16 +422,18 @@ def _emit_samples_after_checkpoint(
     sampler_entry: str | None,
     prompts_file: Path | None,
     budget_s: float = _SAMPLER_BUDGET_S,
-) -> None:
-    """Run ``sample-batch`` against the freshly-saved adapter and emit a
-    ``sample`` event for each prompt.
+) -> list[dict[str, Any]]:
+    """Run ``sample-batch`` against the freshly-saved adapter, emit a
+    ``sample`` event for each prompt, and return the captured samples
+    so the Training Advisor (when enabled) can feed them into Opus
+    without re-running the sampler.
 
     This runs synchronously on the main training loop — the ~10 s pause is
     acceptable because mlx_lm has already flushed the checkpoint and any
     trainer stdout that queues up meanwhile is captured by the drain thread.
 
     Never raises. On timeout, non-zero exit, or malformed subprocess stdout,
-    we ``runtime.log`` a warning (stderr) and return silently; training keeps
+    we ``runtime.log`` a warning (stderr) and return ``[]``; training keeps
     running. No ``error`` event is emitted on stdout because a failed
     Growing Model sample is not a failed training run.
     """
@@ -442,14 +469,14 @@ def _emit_samples_after_checkpoint(
             iter=iter,
             budget_s=budget_s,
         )
-        return
+        return []
     except (FileNotFoundError, OSError) as exc:
         runtime.log(
             "sample-batch failed to spawn",
             iter=iter,
             error=str(exc),
         )
-        return
+        return []
 
     if proc.returncode != 0:
         runtime.log(
@@ -458,15 +485,17 @@ def _emit_samples_after_checkpoint(
             returncode=proc.returncode,
             stderr_tail=proc.stderr[-400:] if proc.stderr else "",
         )
-        return
+        return []
 
-    _reemit_generations_as_samples(proc.stdout, iter=iter)
+    return _reemit_generations_as_samples(proc.stdout, iter=iter)
 
 
-def _reemit_generations_as_samples(stdout_text: str, *, iter: int) -> None:
+def _reemit_generations_as_samples(stdout_text: str, *, iter: int) -> list[dict[str, Any]]:
     """Parse sample-batch stdout and emit one ``sample`` event per
     ``generation`` event, tagged with ``iter``. Other event types (ready,
-    done, error) are ignored."""
+    done, error) are ignored. Returns the parsed ``{prompt, completion}``
+    pairs for downstream consumers (the Training Advisor)."""
+    captured: list[dict[str, Any]] = []
     for line in stdout_text.splitlines():
         if not line.strip():
             continue
@@ -492,5 +521,118 @@ def _reemit_generations_as_samples(stdout_text: str, *, iter: int) -> None:
                 prompt_id=prompt_id,
                 completion=completion,
                 tokens_per_s=tokens_per_s,
+            )
+        )
+        captured.append({"prompt": prompt_id, "completion": completion})
+    return captured
+
+
+# ---------- PR #23: Training Advisor (post-checkpoint observation) ----------
+
+
+_ADVISOR_BUDGET_S: float = 25.0
+
+
+class _AdvisorState:
+    """Carries the advisor mode + total iteration count across checkpoints.
+
+    The advisor is invoked once per checkpoint (immediately after the
+    Growing Model sampler runs), not on a wall-clock 30 s timer. This
+    deliberate variation from the original design pairs each observation
+    with the freshly-generated samples that motivated it; checkpoints in
+    practice fire every 30–60 s anyway. Documented in PR #23.
+    """
+
+    __slots__ = ("mode", "iter_total", "advisor_entry")
+
+    def __init__(self, *, mode: str, iter_total: int, advisor_entry: str | None) -> None:
+        if mode not in ("cloud", "local"):
+            raise ValueError(f"advisor mode must be cloud|local, got {mode!r}")
+        self.mode = mode
+        self.iter_total = int(iter_total)
+        self.advisor_entry = advisor_entry  # hidden test seam
+
+
+def _emit_advisor_observation_after_checkpoint(
+    *,
+    state: _AdvisorState,
+    iter_now: int,
+    samples: list[dict[str, Any]],
+    loss_trajectory: list[float],
+    budget_s: float = _ADVISOR_BUDGET_S,
+) -> None:
+    """Spawn the training-advisor module with the post-checkpoint state
+    snapshot. Re-emits the resulting ``advisor_observation`` event onto
+    our own stdout so the Swift parent can stream it into the panel.
+
+    Never raises. On timeout, non-zero exit, missing API key, or
+    malformed subprocess stdout we ``runtime.log`` a warning and return
+    silently; training keeps running with a "no observation this iter"
+    gap in the panel.
+    """
+    if state.advisor_entry is not None:
+        cmd = [sys.executable, str(state.advisor_entry), "--mode", state.mode]
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "kiln_trainer.training_advisor",
+            "--mode",
+            state.mode,
+        ]
+
+    payload = json.dumps({
+        "samples": samples,
+        "loss_trajectory": loss_trajectory[-24:],
+        "iter": iter_now,
+        "iter_total": state.iter_total,
+    })
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=budget_s,
+        )
+    except subprocess.TimeoutExpired:
+        runtime.log(
+            "training-advisor exceeded budget; no observation for this iter",
+            iter=iter_now,
+            budget_s=budget_s,
+        )
+        return
+    except (FileNotFoundError, OSError) as exc:
+        runtime.log("training-advisor failed to spawn", iter=iter_now, error=str(exc))
+        return
+
+    if proc.returncode != 0:
+        runtime.log(
+            "training-advisor exited non-zero; no observation",
+            iter=iter_now,
+            returncode=proc.returncode,
+            stderr_tail=(proc.stderr or "")[-400:],
+        )
+        return
+
+    for line in (proc.stdout or "").splitlines():
+        if not line.strip():
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict) or ev.get("event") != "advisor_observation":
+            continue
+        content = ev.get("content")
+        model_id = ev.get("model")
+        if not isinstance(content, str) or not isinstance(model_id, str):
+            continue
+        events.emit(
+            events.advisor_observation(
+                iter=iter_now,
+                content=content,
+                model=model_id,
             )
         )

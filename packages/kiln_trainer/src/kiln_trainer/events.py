@@ -21,7 +21,21 @@ import sys
 from typing import Any, IO
 
 EVENT_TYPES: frozenset[str] = frozenset(
-    {"ready", "progress", "sample", "checkpoint", "error", "done", "generation", "classification"}
+    {
+        "ready",
+        "progress",
+        "sample",
+        "checkpoint",
+        "error",
+        "done",
+        "generation",
+        "classification",
+        # Saturday-final: Training Advisor (PR #23) emits one
+        # ``advisor_observation`` per checkpoint (or every 30 s when run
+        # as a standalone background poller). Field schema:
+        # ``{event, iter, content (≤120 chars), model (id)}``.
+        "advisor_observation",
+    }
 )
 
 STAGES: frozenset[str] = frozenset(
@@ -103,6 +117,18 @@ def checkpoint(path: str, iter: int, best: bool | None = None) -> dict[str, Any]
     if best is not None:
         event["best"] = bool(best)
     return event
+
+
+def advisor_observation(iter: int, content: str, model: str) -> dict[str, Any]:
+    """Training Advisor's one-line observation for the iteration. ``content``
+    is truncated to 120 chars defensively (Opus is system-prompted to a
+    one-line ≤120-char output but we belt-and-suspenders here)."""
+    return {
+        "event": "advisor_observation",
+        "iter": int(iter),
+        "content": str(content)[:120],
+        "model": str(model),
+    }
 
 
 def error(

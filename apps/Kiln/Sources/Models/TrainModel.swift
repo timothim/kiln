@@ -91,6 +91,19 @@ final class TrainModel {
     /// header to render "Step N · Epoch E of T".
     var totalEpochs: Int = 1
 
+    /// PR #23 Training Advisor observations. Each entry is a one-line
+    /// Opus (or local-Qwen) take on the run's state at a checkpoint
+    /// boundary. The TrainingAdvisorPanel renders the most-recent 8.
+    var advisorObservations: [AdvisorObservation] = []
+
+    struct AdvisorObservation: Identifiable, Hashable {
+        let id = UUID()
+        let iter: Int
+        let content: String
+        let modelID: String
+        let arrivedAt: Date
+    }
+
     // Private state.
     private var task: Task<Void, Never>?
     private var request: TrainingRequest?
@@ -164,6 +177,7 @@ final class TrainModel {
         sidecarVersion = nil
         growingModelSamples = []
         totalEpochs = 1
+        advisorObservations = []
         request = nil
         startTime = nil
     }
@@ -269,6 +283,14 @@ final class TrainModel {
 
         case .checkpoint(let path, let iter, _):
             lastCheckpoint = (url: path, iter: iter)
+
+        case .advisorObservation(let iter, let content, let modelID):
+            advisorObservations.append(AdvisorObservation(
+                iter: iter,
+                content: content,
+                modelID: modelID,
+                arrivedAt: Date()
+            ))
 
         case .done(let artifact, let interrupted):
             let now = Date()

@@ -95,6 +95,18 @@ def _build_train_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--iters", type=int, default=None, help="hard override of iters computed from epochs")
     p.add_argument("--sample-prompts-file", type=Path, default=None, help="JSON list of Growing Model prompts")
+    # PR #23 — Training Advisor.
+    p.add_argument(
+        "--enable-advisor",
+        action="store_true",
+        help="run the post-checkpoint Training Advisor (Opus 4.7 cloud or local Qwen)",
+    )
+    p.add_argument(
+        "--advisor-mode",
+        default="cloud",
+        choices=["cloud", "local"],
+        help="advisor model channel — cloud calls claude-opus-4-7, local calls qwen2.5:7b via Ollama",
+    )
     # Hidden test seam: lets tests point at tests/fixtures/fake_trainer.py.
     p.add_argument("--trainer-module", default="mlx_lm.lora", help=argparse.SUPPRESS)
     p.add_argument("--trainer-entry", default=None, help=argparse.SUPPRESS)
@@ -102,6 +114,8 @@ def _build_train_parser(sub: argparse._SubParsersAction) -> None:
     # to the spawned ``sample-batch`` subprocess so integration tests can swap
     # in ``tests/fixtures/fake_batch_generator.py``.
     p.add_argument("--sampler-entry", default=None, help=argparse.SUPPRESS)
+    # Hidden test seam for the post-checkpoint advisor (PR #23).
+    p.add_argument("--advisor-entry", default=None, help=argparse.SUPPRESS)
 
 
 def _build_sample_parser(sub: argparse._SubParsersAction) -> None:
