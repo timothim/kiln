@@ -50,18 +50,18 @@ FILES_BETA_HEADER = "files-api-2025-04-14"
 
 
 def _emit_progress(*, samples_reviewed: int, removals: int, flags: int) -> None:
-    sys.stdout.write(json.dumps({
-        "event": "agent_progress",
-        "samples_reviewed": int(samples_reviewed),
-        "removals": int(removals),
-        "flags": int(flags),
-    }) + "\n")
-    sys.stdout.flush()
+    # Audit H6: route through ``events.emit_agent`` so the event type is
+    # validated against ``AGENT_EVENT_TYPES`` at emit time.
+    events.emit_agent(
+        "agent_progress",
+        samples_reviewed=int(samples_reviewed),
+        removals=int(removals),
+        flags=int(flags),
+    )
 
 
 def _emit_thought(content: str) -> None:
-    sys.stdout.write(json.dumps({"event": "agent_thinking", "content": content}) + "\n")
-    sys.stdout.flush()
+    events.emit_agent("agent_thinking", content=content)
 
 
 def _api_post(path: str, body: dict, *, api_key: str, beta: str = BETA_HEADER) -> dict:
@@ -315,15 +315,14 @@ def run(args: argparse.Namespace) -> int:
         report_path=report_path,
     )
 
-    sys.stdout.write(json.dumps({
-        "event": "agent_completion",
-        "samples_kept": int(summary.get("keep", 0)) + int(summary.get("flag", 0)),
-        "samples_removed": int(summary.get("remove", 0)),
-        "samples_flagged": int(summary.get("flag", 0)),
-        "report_path": str(report_path),
-        "curated_path": str(output_path),
-    }) + "\n")
-    sys.stdout.flush()
+    events.emit_agent(
+        "agent_completion",
+        samples_kept=int(summary.get("keep", 0)) + int(summary.get("flag", 0)),
+        samples_removed=int(summary.get("remove", 0)),
+        samples_flagged=int(summary.get("flag", 0)),
+        report_path=str(report_path),
+        curated_path=str(output_path),
+    )
 
     events.emit(events.done(stage="generation", artifact=str(output_path), interrupted=False))
     return 0

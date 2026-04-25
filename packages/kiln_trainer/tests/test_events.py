@@ -149,3 +149,40 @@ def test_emit_escapes_newlines_in_field_values() -> None:
     assert out.count("\n") == 1  # only the framing terminator
     parsed = json.loads(out.strip())
     assert parsed["completion"] == "line1\nline2"
+
+
+# ---------- Audit H6: emit_agent validates the agent-event vocabulary ----------
+
+
+def test_emit_agent_writes_validated_event_through_stream() -> None:
+    """Happy path: a known agent event type serialises to one JSON line
+    with the expected ``event`` discriminator + fields."""
+    buf = io.StringIO()
+    events.emit_agent("agent_thinking", content="reading the corpus", stream=buf)
+    out = buf.getvalue().strip()
+    parsed = json.loads(out)
+    assert parsed == {"event": "agent_thinking", "content": "reading the corpus"}
+
+
+def test_emit_agent_raises_on_typo_in_event_type() -> None:
+    """Audit H6: a typo (``"agent_thinkng"``) must raise ValueError at
+    emit time. Pre-fix this typo would have flowed straight to stdout
+    and the Swift decoder would have silently skipped it — the panel
+    would have gone quiet without any error trail."""
+    buf = io.StringIO()
+    with pytest.raises(ValueError, match="agent event type"):
+        events.emit_agent("agent_thinkng", content="oops", stream=buf)
+    # Nothing written to the stream when validation fails.
+    assert buf.getvalue() == ""
+
+
+def test_emit_agent_known_types_all_pass_validation() -> None:
+    """Smoke-test the full ``AGENT_EVENT_TYPES`` set so we catch
+    accidental mismatches (e.g. a future caller adds an event without
+    updating the frozenset, or vice versa). Every name in the set
+    must accept a minimal call."""
+    buf = io.StringIO()
+    for name in events.AGENT_EVENT_TYPES:
+        events.emit_agent(name, stream=buf)
+    # Total events = number of known types, one per line.
+    assert buf.getvalue().count("\n") == len(events.AGENT_EVENT_TYPES)
