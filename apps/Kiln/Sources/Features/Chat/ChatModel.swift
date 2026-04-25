@@ -117,7 +117,7 @@ extension ChatModel {
     final class PreviewClient: OllamaClient, @unchecked Sendable {
         let tokens: [String]
 
-        init(tokens: [String] = ["Hi", "!", " How", " can", " I", " help", "?"]) {
+        init(tokens: [String] = ["Hi", " there", ".", " How", " can", " I", " help", "?"]) {
             self.tokens = tokens
         }
 
