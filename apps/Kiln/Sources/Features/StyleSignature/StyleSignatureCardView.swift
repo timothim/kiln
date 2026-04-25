@@ -229,15 +229,26 @@ struct StyleSignatureCardArt: View {
     static let cardWidth:  CGFloat = 640
     static let cardHeight: CGFloat = 480
 
+    /// Section dividers inside the card are intentionally lighter than the
+    /// system default — the card already has a regular-material background,
+    /// so a full-strength divider reads as a hard line. Same value used for
+    /// every divider so they match.
+    private static let sectionDividerOpacity: Double = 0.4
+
+    /// Subtle border + chip-fill grade. Color.primary at this opacity
+    /// disappears against the card material, so we use it for non-essential
+    /// chrome (the outer stroke and the syntactic-pattern chip background).
+    private static let chromeOpacity: Double = 0.06
+
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.m) {
             header
             summaryBlock
-            Divider().opacity(0.4)
+            sectionDivider
             signaturePhrasesBlock
-            Divider().opacity(0.4)
+            sectionDivider
             syntacticPatternsBlock
-            Divider().opacity(0.4)
+            sectionDivider
             rhythmAndRegisterRow
             Spacer(minLength: 0)
             watermark
@@ -250,8 +261,12 @@ struct StyleSignatureCardArt: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                .stroke(Color.primary.opacity(Self.chromeOpacity), lineWidth: 1)
         }
+    }
+
+    private var sectionDivider: some View {
+        Divider().opacity(Self.sectionDividerOpacity)
     }
 
     private var header: some View {
@@ -294,7 +309,7 @@ struct StyleSignatureCardArt: View {
                         .padding(.horizontal, Kiln.Space.xs)
                         .padding(.vertical, Kiln.Space.xxs)
                         .background {
-                            Capsule().fill(Color.primary.opacity(0.06))
+                            Capsule().fill(Color.primary.opacity(Self.chromeOpacity))
                         }
                 }
             }

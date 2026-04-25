@@ -1,10 +1,12 @@
 import Foundation
 
 /// Real-time "mirror" that shows the user how the current adapter would
-/// complete a prompt as it is trained. Feature-flagged off until the
-/// streaming inference pipe (M6) lands.
+/// complete a prompt as it is trained. Implemented in M7 via
+/// ``SubprocessSampleCompareRunner`` (see Sampling/SampleCompareRunner.swift).
+/// The legacy ``VoiceMirror.reflect`` stub stays as dead code; the live
+/// path is the side-by-side base/finetuned/blended sample-compare flow.
 public enum VoiceMirror {
-    public static let isImplemented = false
+    public static let isImplemented = true
 
     public struct Reflection: Sendable, Equatable {
         public let prompt: String

@@ -1,9 +1,13 @@
 import Foundation
 
 /// Library of user-saved "voices" — each voice is a named fused adapter
-/// the user can switch between. Lands post-M6 once fuse-export is stable.
+/// the user can switch between. Implemented in M8 via ``VoicesProvider``
+/// (see `apps/Kiln/Sources/Models/VoicesModel.swift`). The legacy
+/// ``KilnVoices.list`` / ``activate`` stubs remain as dead code until they
+/// are removed in a follow-up sweep — the live path goes through the
+/// provider, not these enum methods.
 public enum KilnVoices {
-    public static let isImplemented = false
+    public static let isImplemented = true
 
     public struct Voice: Sendable, Equatable, Identifiable {
         public let id: UUID

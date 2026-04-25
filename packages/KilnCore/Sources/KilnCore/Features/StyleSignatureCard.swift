@@ -2,10 +2,11 @@ import Foundation
 
 /// Human-readable card summarizing the user's voice signature — produced
 /// by the `style-extractor` distilled component (SPEC §7.3). Renders as
-/// a markdown card in the UI. Depends on the style-extractor artifact
-/// shipping above bar (cosine ≥ 0.75); gated off until it does.
+/// a markdown card in the UI. The card view itself is live in
+/// ``apps/Kiln/Sources/Features/StyleSignature/StyleSignatureCardView.swift``;
+/// the legacy ``StyleSignatureCard.generate`` stub remains as dead code.
 public enum StyleSignatureCard {
-    public static let isImplemented = false
+    public static let isImplemented = true
 
     public struct Signature: Sendable, Equatable {
         public let embedding: [Float]
