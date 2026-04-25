@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_sample_batch_parser(sub)
     _build_sample_compare_parser(sub)
     _build_export_parser(sub)
+    _build_classify_parser(sub)
 
     return parser
 
@@ -210,6 +211,53 @@ def _build_export_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--ollama-bin", default="ollama", help=argparse.SUPPRESS)
 
 
+def _build_classify_parser(sub: argparse._SubParsersAction) -> None:
+    """``classify`` — run a single distilled classifier on text input (M9.C).
+
+    The Swift parent invokes this once per pipeline stage that needs a
+    classifier (Dataset Doctor calls ``--mode quality`` per chunk; Style
+    Signature Card calls ``--mode style`` once per corpus). One mode per
+    invocation keeps the contract narrow and the subprocess cheap; for
+    bulk corpus-time gating, pass ``--input-file`` to amortize model load."""
+    p = sub.add_parser(
+        "classify",
+        help="run a distilled classifier on JSONL or single text",
+        description=(
+            "Score text via the M9.C distilled classifiers (quality / "
+            "preference / style). Emits one classification event per row "
+            "plus a final done(stage=classify)."
+        ),
+    )
+    p.add_argument(
+        "--mode",
+        required=True,
+        choices=["quality", "preference", "style"],
+        help="which classifier to run",
+    )
+    p.add_argument(
+        "--artifact",
+        type=Path,
+        default=None,
+        help="path to the trained sklearn pickle (required for --mode quality)",
+    )
+    p.add_argument(
+        "--input-file",
+        type=Path,
+        default=None,
+        help='JSONL of {"request_id", "text"} rows; omit when using --text',
+    )
+    p.add_argument(
+        "--text",
+        default=None,
+        help="single text to classify (mutually exclusive with --input-file)",
+    )
+    p.add_argument(
+        "--request-id",
+        default=None,
+        help="optional id echoed back on the classification event when using --text",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -245,6 +293,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import export as export_cmd
 
         return export_cmd.run(args)
+    if args.command == "classify":
+        from kiln_trainer.commands import classify as classify_cmd
+
+        return classify_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here

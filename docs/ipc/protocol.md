@@ -51,8 +51,9 @@ Authoritative constants in
 [`packages/kiln_trainer/src/kiln_trainer/events.py`](../../packages/kiln_trainer/src/kiln_trainer/events.py):
 
 ```python
-EVENT_TYPES   = {"ready", "progress", "sample", "checkpoint", "error", "done", "generation"}
-STAGES        = {"sft", "dpo", "fuse", "gguf", "ollama", "generation"}
+EVENT_TYPES   = {"ready", "progress", "sample", "checkpoint", "error", "done",
+                 "generation", "classification"}
+STAGES        = {"sft", "dpo", "fuse", "gguf", "ollama", "generation", "classify"}
 ERROR_CODES   = {"oom", "data_invalid", "model_not_found", "adapter_invalid",
                  "gguf_failed", "ollama_unavailable", "subprocess_failed",
                  "sigterm", "internal"}
@@ -62,6 +63,10 @@ ERROR_CODES   = {"oom", "data_invalid", "model_not_found", "adapter_invalid",
 > [`ExportModels.swift`](../../packages/KilnCore/Sources/KilnCore/Export/ExportModels.swift)
 > additionally declares `.modelfile` for completeness, but the sidecar does
 > **not** emit `done(stage="modelfile")` today. That case is reserved.
+
+> **M9.C addition.** `classification` is the per-row result event from the
+> `classify` subcommand (M9.C distilled classifiers). `classify` is its
+> terminal stage. See §3.8 for the wire schema and §4.5 for the timeline.
 
 ### 3.1 `ready`
 
@@ -211,6 +216,30 @@ those three streams — there is no blend variant on the wire. For
 etc.) which the parent `train` then re-emits as a §3.4 `sample` event with
 the checkpoint's `iter` injected.
 
+### 3.8 `classification`
+
+Distilled-classifier inference result (M9.C). One per row processed by the
+`classify` subcommand.
+
+```json
+{"event":"classification","request_id":"r42","kind":"quality","payload":{"score":0.82,"bucket":"keep"}}
+```
+
+| Field         | Type   | Required | Notes                                                                                            |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------------------------ |
+| `request_id`  | string | yes      | Echoes the input row's id (or a numeric index when omitted upstream).                            |
+| `kind`        | string | yes      | One of `"quality"`, `"preference"`, `"style"` — the active classifier mode for this run.         |
+| `payload`     | object | yes      | Typed result. Schema varies by `kind` (see below).                                                |
+
+**Payload by kind:**
+
+- `quality` → `{"score": float ∈ [0,1], "bucket": "keep" | "chosen_only" | "discard"}`. Cutoffs: ≥ 0.70 keep, [0.40, 0.70) chosen-only, < 0.40 discard.
+- `preference` → `{"voice_score": float ∈ [0,1]}`. Single-side voice score; pairing happens client-side.
+- `style` → `{"style_descriptors": {...6 axes...}, "distinctive_ngrams": [str], "style_card_md": str}`. Same shape as `managed-agents/style-extractor/runs/.../style-profiles.jsonl`.
+
+Emitter: [`events.classification(...)`](../../packages/kiln_trainer/src/kiln_trainer/events.py).
+Consumer: [`SubprocessDistilledClassifierRunner`](../../packages/KilnCore/Sources/KilnCore/Distilled/DistilledClassifierRunner.swift) decodes per-kind into typed `QualityScore` / `DistilledStyleProfile`.
+
 ## 4. Subcommand event timelines
 
 ### 4.1 `train`
@@ -274,6 +303,24 @@ ready
 generation × N    # one per prompt in the prompts file or DEFAULT_PROMPTS
 done(stage="generation", interrupted=…)
 ```
+
+### 4.5 `classify` (M9.C)
+
+`classify` runs one mode (`--mode quality | preference | style`) per
+invocation. Inputs come from `--text` (single row) or `--input-file`
+(JSONL of `{"request_id", "text"}`).
+
+```
+ready
+classification × N    # one per input row
+done(stage="classify", artifact="stdout", interrupted=…)
+```
+
+The terminal `done` carries `artifact="stdout"` because results stream out
+of band — there is no on-disk artifact. Recoverable per-row errors emit
+`error(recoverable=true)` and the stream continues; an unrecoverable error
+(missing artifact, malformed input file) emits `error(recoverable=false)`,
+the run exits non-zero, and `Process.terminationStatus` carries the code.
 
 ## 5. Swift event-enum mapping
 
