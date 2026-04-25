@@ -175,6 +175,53 @@ final class DistilledClassifierRunnerTests: XCTestCase {
         }
     }
 
+    // MARK: - Concurrent stderr drain regression
+
+    func test_runner_does_not_deadlock_on_large_stderr_burst() async throws {
+        // Verifier T3 from PR #15: reading stdout to EOF before stderr
+        // would deadlock if the child fills the 64 KB stderr pipe before
+        // closing stdout. Concurrent drain (async-let × 2) removes the
+        // hazard. Regression test: emit ~80 KB of stderr before stdout.
+        let stderrBlast = String(repeating: "x", count: 80 * 1024)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-stderr-blast-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let blastFile = dir.appendingPathComponent("blast.txt")
+        try stderrBlast.write(to: blastFile, atomically: true, encoding: .utf8)
+        let script = dir.appendingPathComponent("fake-noisy.sh")
+        let body = """
+        #!/bin/bash
+        cat \(blastFile.path) >&2
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        echo '{"event":"classification","request_id":"r1","kind":"quality","payload":{"score":0.5,"bucket":"chosen_only"}}'
+        echo '{"event":"done","stage":"classify","artifact":"stdout","interrupted":false}'
+        exit 0
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script,
+            argumentPrefix: [],
+            workingDirectory: dir,
+            environment: nil
+        )
+        let runner = SubprocessDistilledClassifierRunner(
+            launcher: launcher,
+            qualityArtifactPath: URL(fileURLWithPath: "/tmp/fake.pkl")
+        )
+        // The test fails by hanging if the drain order is wrong — XCTest's
+        // per-test timeout (default 60s) catches it.
+        let result = try await runner.classify([
+            ClassifierInputRow(requestID: "r1", text: "anything")
+        ])
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].requestID, "r1")
+    }
+
     // MARK: - Empty input fast path
 
     func test_classify_returns_empty_for_empty_input_without_launching() async throws {

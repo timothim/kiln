@@ -158,16 +158,21 @@ public final class SubprocessDistilledClassifierRunner: QualityClassifierRunner,
                 throw DistilledClassifierError.launchFailed(message: error.localizedDescription)
             }
 
-            // Read stdout/stderr to EOF synchronously. The classify
-            // subcommand emits a small bounded stream (≤ N+2 lines for
-            // N inputs), well under the 64 KB pipe buffer, so a single
-            // ``readDataToEndOfFile`` is the simplest correct pattern.
-            // Streaming via ``bytes.lines`` was tried first and hung
-            // intermittently when the suite ran sibling tests beforehand
-            // — the FileHandle async iterator did not always see EOF
-            // when the child exited, leaving the read blocked forever.
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            // Read stdout and stderr concurrently to EOF — verifier T3
+            // finding from PR #15 / PR #17. Reading them sequentially
+            // (stdout first) deadlocks if the child ever fills the
+            // 64 KB stderr pipe buffer before closing stdout (e.g. a
+            // sklearn version-skew traceback on a corrupted pickle).
+            // The classify / embed-search subcommands are bounded in
+            // practice but a real production failure mode still
+            // motivates the concurrent drain.
+            //
+            // ``Task.detached`` runs both pipe reads off the cooperative
+            // pool; ``readDataToEndOfFile`` is otherwise the same call.
+            async let stdoutTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }.value
+            async let stderrTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }.value
+            let stdoutData = await stdoutTask
+            let stderrData = await stderrTask
 
             process.waitUntilExit()
 
