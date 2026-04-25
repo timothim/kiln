@@ -244,3 +244,119 @@ private final class FakeTrainingRunner: TrainingRunner, @unchecked Sendable {
         }
     }
 }
+
+/// Captures the ``TrainingRequest`` argument so tests can assert on the
+/// flag values that flowed in from ``AppModel.startTraining``. Used by
+/// the post-audit C4 regression test.
+private final class CapturingTrainingRunner: TrainingRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var captured: TrainingRequest?
+
+    func runStreaming(request: TrainingRequest) -> AsyncThrowingStream<TrainingEvent, Error> {
+        lock.lock(); captured = request; lock.unlock()
+        return AsyncThrowingStream { continuation in
+            // Yield a clean done so the TrainModel doesn't sit running.
+            let url = request.runDir.appendingPathComponent("adapters.safetensors")
+            FileManager.default.createFile(atPath: url.path, contents: Data())
+            continuation.yield(.checkpoint(path: url, iter: 1, best: nil))
+            continuation.yield(.done(artifact: url, interrupted: false))
+            continuation.finish()
+        }
+    }
+
+    var capturedRequest: TrainingRequest? {
+        lock.lock(); defer { lock.unlock() }
+        return captured
+    }
+}
+
+// MARK: - C4 regression: AppModel reads the canonical training-advisor key
+
+@MainActor
+final class AppModelAdvisorToggleTests: XCTestCase {
+
+    private var tempDir: URL!
+
+    override func setUpWithError() throws {
+        tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kiln-c4-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: tempDir)
+        UserDefaults.standard.removeObject(forKey: CloudFeaturesSettingsKeys.trainingAdvisorEnabled)
+        UserDefaults.standard.removeObject(forKey: CloudFeaturesSettingsKeys.voiceCoachLocalMode)
+        UserDefaults.standard.removeObject(forKey: "trainingAdvisorEnabled")
+        UserDefaults.standard.removeObject(forKey: "voiceCoachLocalMode")
+    }
+
+    private func startWithDefaults(canonical: Bool, local: Bool) -> CapturingTrainingRunner {
+        // Make sure no stale legacy literals interfere.
+        UserDefaults.standard.removeObject(forKey: "trainingAdvisorEnabled")
+        UserDefaults.standard.removeObject(forKey: "voiceCoachLocalMode")
+        UserDefaults.standard.set(canonical, forKey: CloudFeaturesSettingsKeys.trainingAdvisorEnabled)
+        UserDefaults.standard.set(local, forKey: CloudFeaturesSettingsKeys.voiceCoachLocalMode)
+
+        let datasetURL = tempDir.appendingPathComponent("train.jsonl")
+        FileManager.default.createFile(atPath: datasetURL.path, contents: Data("{}\n".utf8))
+
+        let runner = CapturingTrainingRunner()
+        let app = AppModel(trainingRunnerFactory: { runner })
+        var project = Project(name: "AdvisorToggle", stage: .training)
+        project.preparedDatasetURL = datasetURL
+        app.projects = [project]
+        app.selectedProjectID = project.id
+        app.startTraining(projectID: project.id)
+        return runner
+    }
+
+    func test_canonical_advisor_key_true_sets_enableAdvisor_on_request() {
+        let runner = startWithDefaults(canonical: true, local: false)
+        guard let req = runner.capturedRequest else {
+            return XCTFail("AppModel did not call runStreaming on the runner")
+        }
+        XCTAssertTrue(req.enableAdvisor, "canonical key set to true should flip enableAdvisor")
+        XCTAssertEqual(req.advisorMode, "cloud")
+    }
+
+    func test_canonical_advisor_key_false_leaves_enableAdvisor_off() {
+        let runner = startWithDefaults(canonical: false, local: false)
+        guard let req = runner.capturedRequest else {
+            return XCTFail("AppModel did not call runStreaming")
+        }
+        XCTAssertFalse(req.enableAdvisor)
+    }
+
+    func test_legacy_literal_key_does_not_flip_advisor() {
+        // The pre-fix bug: a legacy ``trainingAdvisorEnabled`` literal in
+        // UserDefaults must NOT enable the advisor. Only the canonical
+        // dotted key counts.
+        UserDefaults.standard.removeObject(forKey: CloudFeaturesSettingsKeys.trainingAdvisorEnabled)
+        UserDefaults.standard.set(true, forKey: "trainingAdvisorEnabled")
+        defer { UserDefaults.standard.removeObject(forKey: "trainingAdvisorEnabled") }
+
+        let datasetURL = tempDir.appendingPathComponent("train.jsonl")
+        FileManager.default.createFile(atPath: datasetURL.path, contents: Data("{}\n".utf8))
+        let runner = CapturingTrainingRunner()
+        let app = AppModel(trainingRunnerFactory: { runner })
+        var project = Project(name: "LegacyKey", stage: .training)
+        project.preparedDatasetURL = datasetURL
+        app.projects = [project]
+        app.selectedProjectID = project.id
+        app.startTraining(projectID: project.id)
+        guard let req = runner.capturedRequest else {
+            return XCTFail("AppModel did not call runStreaming")
+        }
+        XCTAssertFalse(req.enableAdvisor, "legacy literal must not control the advisor")
+    }
+
+    func test_local_mode_toggle_flips_advisor_mode_to_local() {
+        let runner = startWithDefaults(canonical: true, local: true)
+        guard let req = runner.capturedRequest else {
+            return XCTFail("AppModel did not call runStreaming")
+        }
+        XCTAssertTrue(req.enableAdvisor)
+        XCTAssertEqual(req.advisorMode, "local")
+    }
+}

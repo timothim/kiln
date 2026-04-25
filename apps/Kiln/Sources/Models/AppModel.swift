@@ -130,12 +130,21 @@ final class AppModel {
 
         let runDir = Self.runDirectory(for: projectID)
         // PR #23 Training Advisor wire — read the user's "Enable Training
-        // Advisor" toggle directly from UserDefaults so the AppModel
-        // doesn't depend on the CloudFeaturesSettings type that ships
-        // on feat/voice-coach. After both PRs merge into main the
-        // CloudFeaturesSettings reads/writes the same defaults keys.
-        let advisorEnabled = UserDefaults.standard.bool(forKey: "trainingAdvisorEnabled")
-        let advisorLocal = UserDefaults.standard.bool(forKey: "voiceCoachLocalMode")
+        // Advisor" toggle from the canonical defaults keys defined in
+        // ``CloudFeaturesSettingsKeys``. The earlier post-merge note
+        // ("the CloudFeaturesSettings reads/writes the same defaults
+        // keys") was correct in intent but used the wrong literal —
+        // ``CloudFeaturesSettingsKeys.trainingAdvisorEnabled`` is the
+        // dotted ``dev.kiln.cloud.trainingAdvisor.enabled`` form, not
+        // the bare ``trainingAdvisorEnabled`` literal that was hardcoded
+        // here. Fixing the audit's C4: toggle in Settings now actually
+        // gates the advisor.
+        let advisorEnabled = UserDefaults.standard.bool(
+            forKey: CloudFeaturesSettingsKeys.trainingAdvisorEnabled
+        )
+        let advisorLocal = UserDefaults.standard.bool(
+            forKey: CloudFeaturesSettingsKeys.voiceCoachLocalMode
+        )
         let request = TrainingRequest(
             datasetURL: datasetURL,
             runDir: runDir,
