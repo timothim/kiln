@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Optional fourth gate after the rule-based quality stage in the
 /// ingest pipeline (M9.C wiring). Takes a list of chunks that already
@@ -18,6 +19,11 @@ import Foundation
 /// not gating.
 public struct ClassifierQualityGate: Sendable {
     public let runner: QualityClassifierRunner?
+    /// OSLog channel for the gate. Saturday audit M7: gate degradations
+    /// (runner nil, runner threw, count mismatch) now log a warning so
+    /// silent fall-throughs are visible in Console.app rather than
+    /// only via the absence of nonzero ``classifierBuckets``.
+    private static let log = Logger(subsystem: "dev.kiln.core", category: "classifier-gate")
 
     public init(runner: QualityClassifierRunner?) {
         self.runner = runner
@@ -71,11 +77,13 @@ public struct ClassifierQualityGate: Sendable {
     /// routing (``didRun = false``) if the runner is nil or throws.
     public func route(_ chunks: [ClassifierInputRow]) async -> Routing {
         guard let runner else {
+            Self.log.warning("classifier gate degraded: runner not configured (\(chunks.count, privacy: .public) chunks routed all-keep)")
             return Routing(keep: chunks, chosenOnly: [], discard: [], didRun: false)
         }
         do {
             let scored = try await runner.classify(chunks)
             guard scored.count == chunks.count else {
+                Self.log.warning("classifier gate degraded: runner returned \(scored.count, privacy: .public) of \(chunks.count, privacy: .public) expected scores; routing all-keep")
                 return Routing(keep: chunks, chosenOnly: [], discard: [], didRun: false)
             }
             let scoreByID = Dictionary(
@@ -98,6 +106,7 @@ public struct ClassifierQualityGate: Sendable {
             }
             return Routing(keep: keep, chosenOnly: chosenOnly, discard: discard, didRun: true)
         } catch {
+            Self.log.warning("classifier gate degraded: runner threw \(String(describing: error), privacy: .public); routing all-keep")
             return Routing(keep: chunks, chosenOnly: [], discard: [], didRun: false)
         }
     }

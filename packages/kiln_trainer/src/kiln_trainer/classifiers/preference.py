@@ -285,15 +285,21 @@ def score_pair_trained(
     head, returns ``P(A) - P(B)`` as the margin. Symmetric under swap.
 
     Falls back to the heuristic if loading fails (artifact absent in a
-    fresh checkout) so the runtime never crashes on a missing pickle."""
+    fresh checkout) so the runtime never crashes on a missing pickle.
+    Saturday audit M5: also falls back if the embedder fails to load
+    (sentence-transformers unavailable, HF cache corrupt) — same
+    contract: never crash on a transient backend failure."""
     try:
         payload = _load_head(artifact_path)
     except (FileNotFoundError, OSError):
         return score_pair_heuristic(text_a, text_b)
 
-    embedder = _embedder(payload["embed_model"])
-    emb_a = np.array(embedder.encode([text_a], normalize_embeddings=True))[0]
-    emb_b = np.array(embedder.encode([text_b], normalize_embeddings=True))[0]
+    try:
+        embedder = _embedder(payload["embed_model"])
+        emb_a = np.array(embedder.encode([text_a], normalize_embeddings=True))[0]
+        emb_b = np.array(embedder.encode([text_b], normalize_embeddings=True))[0]
+    except Exception:
+        return score_pair_heuristic(text_a, text_b)
     feats = _pair_features(emb_a, emb_b).reshape(1, -1)
     proba = float(payload["head"].predict_proba(feats)[0][1])  # P(A wins)
     margin = abs(proba - 0.5) * 2  # 0..1

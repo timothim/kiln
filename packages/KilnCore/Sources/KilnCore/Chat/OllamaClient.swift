@@ -32,12 +32,19 @@ public final class URLSessionOllamaClient: OllamaClient, @unchecked Sendable {
         self.session = session
     }
 
-    /// Convenience initializer that falls back to the literal default URL we
-    /// control at compile time. Never throws — ``defaultBaseURLString`` is a
-    /// constant and the tests pin its parse.
+    /// Convenience initializer using the literal default URL we control
+    /// at compile time. ``defaultBaseURLString`` is a constant; if its
+    /// parse ever returns nil that's a programmer error in the constant
+    /// itself, not a runtime condition we should disguise behind a
+    /// silent ``/dev/null`` fallback (Saturday audit T2: the previous
+    /// fallback would have surfaced as "cannot connect to /dev/null"
+    /// instead of failing loudly at app start).
     public convenience init(session: URLSession = .shared) {
-        let fallback = URL(fileURLWithPath: "/dev/null")
-        let url = URL(string: Self.defaultBaseURLString) ?? fallback
+        guard let url = URL(string: Self.defaultBaseURLString) else {
+            preconditionFailure(
+                "OllamaClient.defaultBaseURLString failed to parse as URL: \(Self.defaultBaseURLString)"
+            )
+        }
         self.init(baseURL: url, session: session)
     }
 

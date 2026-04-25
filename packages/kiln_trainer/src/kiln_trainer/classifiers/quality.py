@@ -122,16 +122,14 @@ def train(
     indices = np.arange(len(rows))
     rng.shuffle(indices)
     split = int(len(rows) * (1 - test_size))
-    train_idx = indices[:split]
-    test_idx = indices[split:]
 
     texts = [rows[i][0] for i in indices]
     scores = np.array([rows[i][1] for i in indices], dtype=float)
     labels = (scores >= 0.5).astype(int)
 
-    train_texts = [texts[i] for i in range(split)]
+    train_texts = texts[:split]
     train_labels = labels[:split]
-    test_texts = [texts[i] for i in range(split, len(rows))]
+    test_texts = texts[split:]
     test_labels = labels[split:]
 
     pipe = _build_pipeline()
@@ -142,14 +140,16 @@ def train(
 
     artifact_path = Path(artifact_path)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    n_train = split
+    n_test = len(rows) - split
     with open(artifact_path, "wb") as fh:
         pickle.dump(
             {
                 "version": 1,
                 "pipeline": pipe,
                 "random_state": RANDOM_STATE,
-                "n_train": len(train_idx),
-                "n_test": len(test_idx),
+                "n_train": n_train,
+                "n_test": n_test,
                 "train_accuracy": train_acc,
                 "test_accuracy": test_acc,
                 "keep_threshold": KEEP_THRESHOLD,
@@ -159,8 +159,8 @@ def train(
         )
 
     return {
-        "n_train": len(train_idx),
-        "n_test": len(test_idx),
+        "n_train": n_train,
+        "n_test": n_test,
         "train_accuracy": train_acc,
         "test_accuracy": test_acc,
         "artifact_path": str(artifact_path),
