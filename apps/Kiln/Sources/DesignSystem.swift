@@ -118,6 +118,36 @@ enum Kiln {
         /// "spinning."
         static let skeletonPulse: Animation = .easeInOut(duration: 0.9)
             .repeatForever(autoreverses: true)
+
+        // --- Sunday animation pass. Each token is paired with a single
+        // motion *moment* so call sites pick by intent, not by duration.
+
+        /// Per-element step in a stagger sequence — Voice Mirror column
+        /// reveal, multi-card fade-ins. Tight (180ms) so the whole
+        /// sequence stays under 1 s for 4 elements.
+        static let staggerStep: Animation = .smooth(duration: 0.18)
+
+        /// Brief glow sweep when a newly arrived item should be noticed
+        /// (loss-curve latest dot, just-shown sample). easeOut so it
+        /// blooms then settles.
+        static let highlightSweep: Animation = .easeOut(duration: 0.5)
+
+        /// Sub-agent hierarchy connector lines growing from parent to
+        /// child. Slightly slower than `microToggle` so the line draws
+        /// rather than snaps.
+        static let connectorGrow: Animation = .smooth(duration: 0.3)
+
+        /// Slow continuous pulse for the agent-network diagram on the
+        /// Behind the Scenes page. Easeful, repeating, autoreversing —
+        /// reads as "alive" without ever attracting active attention.
+        static let networkPulse: Animation = .easeInOut(duration: 2.2)
+            .repeatForever(autoreverses: true)
+
+        /// Live-indicator dot pulse (MCP server "running," voice "loaded").
+        /// Subtle alpha breath so the dot says "I am awake" without
+        /// becoming decoration.
+        static let statusPulse: Animation = .easeInOut(duration: 1.4)
+            .repeatForever(autoreverses: true)
     }
 
     /// Opacity values for ad-hoc fills the system has organically standardized
