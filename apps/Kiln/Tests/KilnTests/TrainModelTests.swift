@@ -229,6 +229,41 @@ final class TrainModelTests: XCTestCase {
         XCTAssertGreaterThan(model.currentEta ?? -1, 0)
         model.cancel()
     }
+
+    // MARK: - 9. Training Advisor (PR #23)
+
+    func test_advisor_observation_event_appends_to_observations() async {
+        let events: [TrainingEvent] = [
+            .ready(version: "0.1.0", mlx: "0.22.1"),
+            .progress(TrainingProgress(iter: 5, loss: 1.5, tokensPerSec: 900)),
+            .advisorObservation(iter: 5, content: "Voice is stabilizing.", modelID: "claude-opus-4-7"),
+            .progress(TrainingProgress(iter: 10, loss: 1.3, tokensPerSec: 900)),
+            .advisorObservation(iter: 10, content: "Loss plateauing.", modelID: "claude-opus-4-7"),
+        ]
+        let model = TrainModel()
+        model.testing_start(request: makeRequest(iters: 100),
+                            stream: TrainEventStream.openEnded(initial: events))
+        await waitForStatus(model) { _ in model.advisorObservations.count >= 2 }
+        XCTAssertEqual(model.advisorObservations.count, 2)
+        XCTAssertEqual(model.advisorObservations[0].iter, 5)
+        XCTAssertEqual(model.advisorObservations[0].content, "Voice is stabilizing.")
+        XCTAssertEqual(model.advisorObservations[1].modelID, "claude-opus-4-7")
+        model.cancel()
+    }
+
+    func test_reset_clears_advisor_observations() async {
+        let events: [TrainingEvent] = [
+            .advisorObservation(iter: 5, content: "first", modelID: "claude-opus-4-7"),
+            .advisorObservation(iter: 10, content: "second", modelID: "claude-opus-4-7"),
+        ]
+        let model = TrainModel()
+        model.testing_start(request: makeRequest(iters: 100),
+                            stream: TrainEventStream.openEnded(initial: events))
+        await waitForStatus(model) { _ in model.advisorObservations.count >= 2 }
+        model.reset()
+        XCTAssertTrue(model.advisorObservations.isEmpty)
+        XCTAssertEqual(model.status, .idle)
+    }
 }
 
 /// Local support helpers so we don't pull in anything from KilnCoreTests.

@@ -178,6 +178,9 @@ public final class SubprocessTrainingRunner: TrainingRunner, @unchecked Sendable
         if let entry = request.trainerEntry {
             args += ["--trainer-entry", entry]
         }
+        if request.enableAdvisor {
+            args += ["--enable-advisor", "--advisor-mode", request.advisorMode]
+        }
         return args
     }
 

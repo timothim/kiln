@@ -66,6 +66,16 @@ final class TrainingEventDecodingTests: XCTestCase {
         XCTAssertEqual(best, true)
     }
 
+    func test_advisor_observation_event_decodes_iter_content_model() throws {
+        let line = #"{"event":"advisor_observation","iter":50,"content":"Voice is stabilizing.","model":"claude-opus-4-7"}"#
+        guard case let .advisorObservation(iter, content, modelID) = try decode(line) else {
+            return XCTFail("expected .advisorObservation")
+        }
+        XCTAssertEqual(iter, 50)
+        XCTAssertEqual(content, "Voice is stabilizing.")
+        XCTAssertEqual(modelID, "claude-opus-4-7")
+    }
+
     func test_done_event_defaults_interrupted_false_when_omitted() throws {
         let line = #"{"event":"done","stage":"sft","artifact":"/tmp/run/adapters/adapters.safetensors"}"#
         guard case let .done(artifact, interrupted) = try decode(line) else {

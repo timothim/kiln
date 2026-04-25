@@ -208,6 +208,15 @@ private struct TrainingRunningView: View {
             )
             .frame(maxWidth: 640)
 
+            // PR #23 Training Advisor — appears as soon as the first
+            // observation arrives. Hidden during warm-up when there's
+            // nothing for Opus to react to yet.
+            if !model.advisorObservations.isEmpty {
+                TrainingAdvisorInlinePanel(observations: model.advisorObservations)
+                    .frame(maxWidth: 640)
+                    .transition(.opacity)
+            }
+
             Spacer(minLength: 0)
 
             HStack {

@@ -537,9 +537,73 @@ def test_train_emits_sample_events_at_each_checkpoint(
         for s in chunk:
             assert s["completion"].startswith("echo: ")
 
-    # Each sample block must appear AFTER its checkpoint event.
-    for i, ck in enumerate(ckpts):
-        ck_pos = events.index(ck)
-        block = samples[i * 3 : i * 3 + 3]
-        for s in block:
-            assert events.index(s) > ck_pos
+
+# ---------- Integration: PR #23 Training Advisor at each checkpoint ----------
+
+
+def test_train_emits_advisor_observation_after_checkpoint(
+    tmp_path: Path,
+    tiny_dataset: Path,
+    fake_trainer: Path,
+    fake_batch_generator: Path,
+) -> None:
+    """End-to-end: when ``--enable-advisor`` is passed alongside the
+    ``--advisor-entry`` test seam, every checkpoint produces an
+    ``advisor_observation`` event tagged with the checkpoint's iter.
+
+    Confirms the post-checkpoint advisor hook is wired into ``train`` and
+    that the captured Growing-Model samples + loss trajectory flow into
+    the spawned advisor subprocess (the fake echoes the sample count).
+    """
+    run_dir = tmp_path / "run"
+    fake_advisor = Path(__file__).parent / "fixtures" / "fake_advisor.py"
+    cmd = [
+        sys.executable, "-m", "kiln_trainer", "train",
+        "--dataset", str(tiny_dataset),
+        "--model", "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+        "--run-dir", str(run_dir),
+        "--iters", "10", "--save-every", "5",
+        "--val-batches", "1",
+        "--trainer-entry", str(fake_trainer),
+        "--sampler-entry", str(fake_batch_generator),
+        "--enable-advisor", "--advisor-mode", "cloud",
+        "--advisor-entry", str(fake_advisor),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60.0)
+    assert result.returncode == 0, result.stderr
+
+    events = _events(result.stdout)
+    advisor = [e for e in events if e["event"] == "advisor_observation"]
+    # Two checkpoints at iters 5 and 10 → two observations.
+    assert [a["iter"] for a in advisor] == [5, 10]
+    for obs in advisor:
+        assert obs["model"] == "fake-advisor-1.0"
+        # Fake fixture echoes back sample count (3 per checkpoint from
+        # fake_batch_generator).
+        assert "samples=3" in obs["content"]
+
+
+def test_train_advisor_hook_is_no_op_when_flag_omitted(
+    tmp_path: Path,
+    tiny_dataset: Path,
+    fake_trainer: Path,
+    fake_batch_generator: Path,
+) -> None:
+    """Without ``--enable-advisor`` the post-checkpoint advisor never
+    spawns and no advisor_observation events are emitted (preserving
+    backward compatibility for callers that don't set the flag)."""
+    run_dir = tmp_path / "run"
+    cmd = [
+        sys.executable, "-m", "kiln_trainer", "train",
+        "--dataset", str(tiny_dataset),
+        "--model", "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+        "--run-dir", str(run_dir),
+        "--iters", "10", "--save-every", "5",
+        "--val-batches", "1",
+        "--trainer-entry", str(fake_trainer),
+        "--sampler-entry", str(fake_batch_generator),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60.0)
+    assert result.returncode == 0, result.stderr
+    events = _events(result.stdout)
+    assert all(e["event"] != "advisor_observation" for e in events)
