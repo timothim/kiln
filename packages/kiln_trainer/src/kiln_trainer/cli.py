@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_sample_batch_parser(sub)
     _build_sample_compare_parser(sub)
     _build_export_parser(sub)
+    _build_embed_search_parser(sub)
 
     return parser
 
@@ -210,6 +211,52 @@ def _build_export_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--ollama-bin", default="ollama", help=argparse.SUPPRESS)
 
 
+def _build_embed_search_parser(sub: argparse._SubParsersAction) -> None:
+    """``embed-search`` — sentence-transformers similarity search (M9.B).
+
+    Embeds a single query string and a corpus of chunks and emits the
+    top-K matches as ``classification`` events with ``kind="embed_search"``.
+    The Voice Inspector consumes this when the user highlights a span of
+    generated text. The model (``all-MiniLM-L6-v2``, 80 MB) downloads on
+    first use to ``~/.cache/huggingface``; subsequent runs are local.
+
+    Test seam: ``--embedder fake-hash`` swaps in a deterministic hashed-
+    feature embedder so unit tests don't pull the ST model."""
+    p = sub.add_parser(
+        "embed-search",
+        help="sentence-transformers nearest-neighbour search over a corpus",
+        description=(
+            "Embed a query and a JSONL corpus, emit the top-K matches "
+            "as classification events. Used by the Voice Inspector "
+            "(M9.B) to surface 'three corpus chunks closest to the "
+            "highlighted span'."
+        ),
+    )
+    p.add_argument(
+        "--query",
+        required=True,
+        help="text to find nearest neighbours for",
+    )
+    p.add_argument(
+        "--corpus-file",
+        type=Path,
+        required=True,
+        help='JSONL of {"request_id", "text"} rows',
+    )
+    p.add_argument(
+        "--top-k",
+        type=int,
+        default=3,
+        help="number of nearest neighbours to emit (default: 3)",
+    )
+    p.add_argument(
+        "--embedder",
+        default="sentence-transformers",
+        choices=["sentence-transformers", "fake-hash"],
+        help=argparse.SUPPRESS,
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -245,6 +292,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import export as export_cmd
 
         return export_cmd.run(args)
+    if args.command == "embed-search":
+        from kiln_trainer.commands import embed_search as embed_search_cmd
+
+        return embed_search_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here
