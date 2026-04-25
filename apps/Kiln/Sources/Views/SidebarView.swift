@@ -54,12 +54,11 @@ struct SidebarView: View {
             onSelect: { id in
                 Task { await model.voicesModel.activate(id) }
             },
-            onManage: {
-                // M8 placeholder — a dedicated "Manage voices" surface lands
-                // with the Ollama-backed provider. No-op for now so the menu
-                // entry doesn't dangle, but the user doesn't get sent
-                // anywhere that isn't built yet.
-            }
+            // Audit M6: pass nil so the "Manage voices…" entry is
+            // suppressed. A dedicated Manage Voices UI lands post-
+            // hackathon; until then, removing the no-op dead-click is
+            // friendlier than rendering it.
+            onManage: nil
         )
         .padding(.horizontal, Kiln.Space.m)
         .padding(.vertical, Kiln.Space.xs)
