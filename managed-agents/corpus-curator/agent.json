@@ -1,0 +1,14 @@
+{
+  "name": "kiln-corpus-curator",
+  "model": "claude-opus-4-7",
+  "description": "Saturday Phase 4 Managed Agent. Reviews a Kiln user's corpus over multiple turns and produces a structured cleanup report: per-sample recommended actions (keep / remove / flag) with reasons, plus aggregate statistics. Multi-turn long-running session — the canonical Managed Agent usage in Kiln.",
+  "tools": [
+    {"type": "agent_toolset_20260401"}
+  ],
+  "metadata": {
+    "project": "kiln",
+    "component": "corpus-curator",
+    "run_type": "deep-curation",
+    "owner": "timtvn"
+  }
+}

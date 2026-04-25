@@ -1,0 +1,9 @@
+{
+  "name": "kiln-corpus-curator-env",
+  "config": {
+    "type": "cloud",
+    "networking": {
+      "type": "unrestricted"
+    }
+  }
+}
