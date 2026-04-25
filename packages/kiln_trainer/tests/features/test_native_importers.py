@@ -27,7 +27,7 @@ def test_is_implemented_flag_is_false_until_m6():
 
 @pytest.mark.skipif(
     not native_importers.IS_IMPLEMENTED,
-    reason="Native importers land alongside NativeImporters.swift",
+    reason="native importers (Messages chat.db / Notes / Obsidian) deferred — out of M9 scope",
 )
 def test_future_chunks_carry_source_tag():
     pass
