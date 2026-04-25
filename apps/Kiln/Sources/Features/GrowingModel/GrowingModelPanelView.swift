@@ -121,6 +121,12 @@ private struct GrowingModelPromptCard: View {
     let state: GrowingModelState
     let nextUpdateSeconds: Int
 
+    /// Brief scale dip when a fresh response arrives. The card itself
+    /// stays put — only its body breathes for ~250ms — so the user's eye
+    /// catches the new sample without disturbing the layout.
+    @State private var responseRevealScale: CGFloat = 1.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             promptHeader
@@ -132,6 +138,16 @@ private struct GrowingModelPromptCard: View {
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
                 .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
+        }
+        .scaleEffect(responseRevealScale)
+        .onChange(of: sample.currentResponse) { _, _ in
+            // 0.95 → 1.0 over 250ms — a soft re-emergence pulse on each
+            // new checkpoint resample. Reduce Motion → no scale change.
+            guard !reduceMotion else { return }
+            responseRevealScale = 0.97
+            withAnimation(.easeOut(duration: 0.25)) {
+                responseRevealScale = 1.0
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)
@@ -208,12 +224,20 @@ private struct StylizationGauge: View {
     let score: Double
 
     @State private var lastAnnouncedMilestone: Int = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let barWidth: CGFloat = 80
     static let milestones: [Int] = [25, 50, 75, 100]
 
     private var clamped: Double { max(0, min(100, score)) }
     private var pct: Int { Int(clamped) }
+
+    /// Score-dependent pulse period. Slow at 0% (3.0s — barely breathing),
+    /// fast at 100% (1.0s — confident heartbeat). Linear interpolation in
+    /// between. Drives the outer ember glow opacity below.
+    private var pulsePeriodSeconds: Double {
+        3.0 - 2.0 * (clamped / 100)
+    }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Kiln.Space.xxs) {
@@ -224,15 +248,8 @@ private struct StylizationGauge: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .animation(Kiln.Motion.standard, value: clamped)
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Kiln.Palette.surfaceSunken)
-                Capsule()
-                    .fill(Kiln.Palette.firing)
-                    .frame(width: max(0, Self.barWidth * clamped / 100))
-                    .animation(Kiln.Motion.standard, value: clamped)
-            }
-            .frame(width: Self.barWidth, height: Kiln.Space.xxs)
+            gaugeBar
+                .frame(width: Self.barWidth, height: Kiln.Space.xxs)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Stylization")
@@ -240,6 +257,73 @@ private struct StylizationGauge: View {
         .onChange(of: pct) { _, newValue in
             announceIfMilestoneCrossed(newValue)
         }
+    }
+
+    /// The bar splits into a sunken track + firing fill + animated ember
+    /// glow. The glow is a TimelineView-driven shadow whose alpha breathes
+    /// at a rate proportional to the score — barely-there at 0%, an
+    /// audible heartbeat at 100%. Reduce Motion → static glow.
+    @ViewBuilder
+    private var gaugeBar: some View {
+        if reduceMotion {
+            ZStack(alignment: .leading) {
+                Capsule().fill(Kiln.Palette.surfaceSunken)
+                Capsule()
+                    .fill(Kiln.Palette.firing)
+                    .frame(width: fillWidth)
+                    .shadow(color: Kiln.Palette.firing.opacity(staticGlowOpacity),
+                            radius: 3, x: 0, y: 0)
+                    .animation(Kiln.Motion.standard, value: clamped)
+            }
+        } else {
+            // 30 fps cap is plenty for an alpha pulse; matches the brief's
+            // performance ceiling for ambient animations.
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: clamped <= 0)) { context in
+                let phase = pulsePhase(at: context.date)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Kiln.Palette.surfaceSunken)
+                    Capsule()
+                        .fill(Kiln.Palette.firing)
+                        .frame(width: fillWidth)
+                        .shadow(color: Kiln.Palette.firing.opacity(glowOpacity(phase: phase)),
+                                radius: glowRadius(phase: phase),
+                                x: 0, y: 0)
+                        .animation(Kiln.Motion.standard, value: clamped)
+                }
+            }
+        }
+    }
+
+    private var fillWidth: CGFloat {
+        max(0, Self.barWidth * clamped / 100)
+    }
+
+    /// 0...1 sinusoidal phase tied to wall-clock time so the pulse keeps
+    /// rhythm even if the gauge re-renders. Frequency scales with score.
+    private func pulsePhase(at date: Date) -> Double {
+        let t = date.timeIntervalSinceReferenceDate
+        let omega = 2.0 * .pi / max(0.5, pulsePeriodSeconds)
+        // sin returns -1...1; remap to 0...1.
+        return 0.5 + 0.5 * sin(t * omega)
+    }
+
+    /// Glow opacity scales both with score (more amber at high scores) and
+    /// with the pulse phase. Caps at 0.6 so we never paint a halo.
+    private func glowOpacity(phase: Double) -> Double {
+        let scoreFactor = clamped / 100        // 0...1
+        let base = 0.15 * scoreFactor          // 0 at 0%, 0.15 at 100%
+        let pulse = 0.45 * scoreFactor * phase // 0 at 0%, up to 0.45 at 100% peak
+        return min(0.6, base + pulse)
+    }
+
+    private func glowRadius(phase: Double) -> Double {
+        // Static-ish at 0% (1pt), grows to ~6pt at 100%-peak.
+        2.0 + 4.0 * (clamped / 100) * phase
+    }
+
+    /// Reduce-Motion fallback — opacity proportional to score, no pulse.
+    private var staticGlowOpacity: Double {
+        0.15 * (clamped / 100)
     }
 
     private var accessibilityValueText: String {
