@@ -111,6 +111,71 @@ final class MCPServerManagerTests: XCTestCase {
         XCTAssertEqual(kiln["cwd"] as? String, "/tmp/kiln")
     }
 
+    // MARK: - Cancellation retrofit (Saturday-final, fixup/saturday-cancellation)
+
+    func test_stop_escalates_to_sigkill_when_child_ignores_sigterm() throws {
+        // Trap SIGTERM in the fake child so it survives the SIGTERM
+        // grace window. ``stop(graceSeconds: 0.5)`` must escalate to
+        // SIGKILL; without that escalation this test hangs forever.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-mcp-sigkill-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("ignore-sigterm.sh")
+        let body = """
+        #!/bin/bash
+        trap '' TERM
+        echo 'fake mcp ignoring SIGTERM' >&2
+        while true; do sleep 1; done
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script,
+            argumentPrefix: [],
+            workingDirectory: dir,
+            environment: nil
+        )
+        let manager = MCPServerManager(launcher: launcher)
+
+        _ = try manager.start(voiceName: "kiln-sigkill-test")
+        let start = Date()
+        manager.stop(graceSeconds: 0.5)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 2.5, "stop() did not escalate to SIGKILL within budget; took \(elapsed) s")
+        if case .stopped = manager.status {
+            // expected — kernel reaped the SIGKILL'd child
+        } else {
+            XCTFail("expected .stopped after SIGKILL, got \(manager.status)")
+        }
+    }
+
+    func test_deinit_safety_net_terminates_running_subprocess() throws {
+        // Verifies that dropping a manager while running doesn't leak
+        // the ``mcp-serve`` child. We capture the pid before deinit and
+        // assert the process is gone afterwards. ``kill(pid, 0)`` returns
+        // 0 if the process exists, ESRCH otherwise.
+        let (launcher, dir) = try makeFakeLauncher()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var pid: pid_t = 0
+        do {
+            let manager = MCPServerManager(launcher: launcher)
+            _ = try manager.start(voiceName: "kiln-deinit-test")
+            // Reach into the manager just to grab the pid for the
+            // post-deinit reachability probe.
+            pid = manager.processIdentifierForTesting
+            XCTAssertGreaterThan(pid, 0)
+        } // manager goes out of scope here → deinit fires
+        // Give the OS a beat to reap the child after deinit.
+        Thread.sleep(forTimeInterval: 0.7)
+        let alive = (kill(pid, 0) == 0)
+        XCTAssertFalse(alive, "MCPServerManager deinit leaked subprocess pid=\(pid)")
+    }
+
     func test_launch_failure_reflects_in_status() {
         let launcher = TrainerLauncher(
             executableURL: URL(fileURLWithPath: "/no/such/binary/anywhere"),

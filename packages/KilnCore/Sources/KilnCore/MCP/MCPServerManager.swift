@@ -32,6 +32,14 @@ public final class MCPServerManager: @unchecked Sendable {
 
     public private(set) var status: Status = .stopped
 
+    /// Test-only accessor for the underlying subprocess pid. Used by
+    /// ``test_deinit_safety_net_terminates_running_subprocess`` to verify
+    /// the deinit path actually reaps the child. Not exposed publicly
+    /// because callers shouldn't reach past the ``Status`` enum.
+    var processIdentifierForTesting: pid_t {
+        queue.sync { process?.processIdentifier ?? 0 }
+    }
+
     private let launcher: TrainerLauncher
     private let log = Logger(subsystem: "dev.kiln.core", category: "mcp-server")
     private let queue = DispatchQueue(label: "dev.kiln.mcp-server")
@@ -39,6 +47,29 @@ public final class MCPServerManager: @unchecked Sendable {
 
     public init(launcher: TrainerLauncher) {
         self.launcher = launcher
+    }
+
+    deinit {
+        // Safety net: if a caller drops the manager while the child is
+        // still running (e.g. settings view dismissed mid-launch), make
+        // sure we don't leak a zombie ``mcp-serve`` process. ``stop()``
+        // already implements SIGTERM → grace → SIGKILL; we route through
+        // the same code path. Deinit can't await/dispatch, so we call
+        // ``terminate`` synchronously and let the kernel clean up.
+        if let process, process.isRunning {
+            process.terminate()
+            // Best-effort: give the child a brief moment, then SIGKILL.
+            // We can't block deinit on a long sleep, so use a short
+            // 0.5 s window — enough for a well-behaved child to exit
+            // cleanly. Servers that ignore SIGTERM get SIGKILL'd.
+            let deadline = Date().addingTimeInterval(0.5)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
     }
 
     /// Spawn the server and return the ready-to-paste Claude.app
