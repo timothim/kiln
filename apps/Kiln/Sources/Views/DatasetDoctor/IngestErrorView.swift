@@ -52,14 +52,17 @@ struct IngestErrorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// Headlines name the recovery, not the failure (DESIGN.md §Typography).
+    /// The body text in `error.userFacingMessage` carries the explanation;
+    /// the headline is the verb-first instruction.
     private var headline: String {
         switch error {
-        case .cancelled: return "Cancelled"
-        case .noExamplesGenerated: return "Nothing to learn from"
-        case .directoryNotFound: return "Folder unavailable"
-        case .outputDirectoryNotWritable: return "Cannot write scratch files"
-        case .parserFailed: return "Could not read the folder"
-        case .other: return "Something went wrong"
+        case .cancelled: return "Cancelled — your work is safe"
+        case .noExamplesGenerated: return "Add more text to your folder"
+        case .directoryNotFound: return "Re-select your folder"
+        case .outputDirectoryNotWritable: return "Free up some disk space"
+        case .parserFailed: return "Try a different folder"
+        case .other: return "Try another folder"
         }
     }
 

@@ -160,7 +160,7 @@ struct VoiceInspectorPanel: View {
             Text("Select a phrase")
                 .font(Kiln.Font.body)
                 .foregroundStyle(.secondary)
-            Text("Click any span of generated text to see the five training samples closest to it in your voice-extractor embedding.")
+            Text("Click any span of generated text to see the training samples closest to it in your voice-extractor embedding.")
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

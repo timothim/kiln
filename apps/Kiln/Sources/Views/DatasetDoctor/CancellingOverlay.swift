@@ -13,7 +13,9 @@ struct CancellingOverlay<Underlying: View>: View {
             HStack(spacing: Kiln.Space.xs) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Cancelling.")
+                // DESIGN.md §components.cancelling-overlay: copy reassures —
+                // the user's last chunk is already saved by the time we show this.
+                Text("Cancelling — your last chunk is saved.")
                     .font(Kiln.Font.body)
                     .foregroundStyle(.primary)
             }
@@ -24,7 +26,7 @@ struct CancellingOverlay<Underlying: View>: View {
                     .fill(.background.secondary)
             )
             .accessibilityAddTraits(.updatesFrequently)
-            .accessibilityLabel("Cancelling")
+            .accessibilityLabel("Cancelling — your last chunk is saved")
         }
     }
 }
