@@ -99,6 +99,16 @@ enum Kiln {
             removal:   .opacity.combined(with: .move(edge: .leading))
         )
 
+        /// Reverse of `stageTransition` — the new view slides in from the
+        /// leading edge while the old slides out to the trailing edge.
+        /// Wired up by `StageRouterView` when the user navigates *back*
+        /// (e.g. resets prepare to readyToDrop) so the direction of
+        /// motion mirrors the conceptual direction of travel.
+        static let stageTransitionBackward: AnyTransition = .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .leading)),
+            removal:   .opacity.combined(with: .move(edge: .trailing))
+        )
+
         // --- Semantic variants of `standard`, registered by the
         // Saturday UI audit so call sites stop reaching for inline
         // duration literals. Names describe the moment, not the duration.

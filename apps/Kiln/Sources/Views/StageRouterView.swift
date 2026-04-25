@@ -2,9 +2,16 @@ import SwiftUI
 
 /// Middle pane — routes based on the selected project's stage. Each stage
 /// gets a dedicated polished view; the switch animates with Kiln.Motion
-/// .stageTransition when the stage id changes.
+/// .stageTransition when the stage id changes (or .stageTransitionBackward
+/// when the user navigates from a later stage to an earlier one).
 struct StageRouterView: View {
     let model: AppModel
+
+    /// Tracks the most recent stage's order so we can pick a forward vs.
+    /// backward transition. Updated whenever `selectedProject?.stage`
+    /// changes — initial render uses forward.
+    @State private var lastStageOrder: Int = 0
+    @State private var navigatesBackward: Bool = false
 
     var body: some View {
         ZStack {
@@ -15,7 +22,11 @@ struct StageRouterView: View {
             if let project = model.selectedProject {
                 stage(for: project)
                     .id("\(project.id)-\(project.stage.rawValue)")
-                    .transition(Kiln.Motion.stageTransition)
+                    .kilnTransition(
+                        navigatesBackward
+                            ? Kiln.Motion.stageTransitionBackward
+                            : Kiln.Motion.stageTransition
+                    )
             } else {
                 EmptyState(
                     systemImage: "sidebar.left",
@@ -25,6 +36,11 @@ struct StageRouterView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: model.selectedProject?.stage) { _, newStage in
+            guard let newStage else { return }
+            navigatesBackward = newStage.order < lastStageOrder
+            lastStageOrder = newStage.order
+        }
     }
 
     @ViewBuilder
