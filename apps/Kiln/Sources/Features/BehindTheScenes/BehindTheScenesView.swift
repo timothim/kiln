@@ -20,6 +20,11 @@ struct BehindTheScenesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Kiln.Space.xl) {
                 hero
+                AgentNetworkDiagram()
+                    // Frames the network at the center column rather than
+                    // the inner 760-wide reading column — the diagram needs
+                    // breathing room to communicate "satellite view."
+                    .padding(.vertical, Kiln.Space.m)
                 section1BuildTime
                 section2DistilledClassifiers
                 section3RuntimeOpus
