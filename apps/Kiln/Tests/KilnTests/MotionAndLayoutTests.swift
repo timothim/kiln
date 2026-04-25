@@ -64,7 +64,7 @@ final class MotionAndLayoutTests: XCTestCase {
     func test_motion_sundayTokens_allDistinct() {
         let descriptions = [
             String(describing: Kiln.Motion.staggerStep),
-            String(describing: Kiln.Motion.highlightSweep),
+            String(describing: Kiln.Motion.recencyFade),
             String(describing: Kiln.Motion.connectorGrow),
             String(describing: Kiln.Motion.networkPulse),
             String(describing: Kiln.Motion.statusPulse)

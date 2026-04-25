@@ -235,8 +235,15 @@ private struct VoiceMirrorColumn: View {
                 revealIfReady()
             } else if newState == .generating {
                 // Re-trigger on the next done so a regenerate replays
-                // the stagger.
-                hasRevealed = false
+                // the stagger. Symmetric with the reveal: animate the
+                // hide, or snap under Reduce Motion.
+                if reduceMotion {
+                    hasRevealed = false
+                } else {
+                    withAnimation(Kiln.Motion.staggerStep) {
+                        hasRevealed = false
+                    }
+                }
             }
         }
         .accessibilityElement(children: .contain)

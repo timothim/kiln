@@ -350,7 +350,7 @@ private struct LogEntryRow: View {
         // 800ms recency highlight that fades out — eases the eye onto
         // the new line without turning the whole log into flicker.
         highlightOpacity = 1
-        withAnimation(.easeOut(duration: 0.8)) {
+        withAnimation(Kiln.Motion.recencyFade) {
             highlightOpacity = 0
         }
     }

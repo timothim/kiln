@@ -141,11 +141,13 @@ private struct GrowingModelPromptCard: View {
         }
         .scaleEffect(responseRevealScale)
         .onChange(of: sample.currentResponse) { _, _ in
-            // 0.95 → 1.0 over 250ms — a soft re-emergence pulse on each
-            // new checkpoint resample. Reduce Motion → no scale change.
+            // 0.97 → 1.0 — a soft re-emergence pulse on each new
+            // checkpoint resample. Uses the canonical microToggle
+            // (smooth 0.2s) so the rhythm matches every other
+            // chip-flip in the system. Reduce Motion → no scale change.
             guard !reduceMotion else { return }
             responseRevealScale = 0.97
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(Kiln.Motion.microToggle) {
                 responseRevealScale = 1.0
             }
         }

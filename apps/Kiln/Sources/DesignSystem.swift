@@ -137,10 +137,12 @@ enum Kiln {
         /// sequence stays under 1 s for 4 elements.
         static let staggerStep: Animation = .smooth(duration: 0.18)
 
-        /// Brief glow sweep when a newly arrived item should be noticed
-        /// (loss-curve latest dot, just-shown sample). easeOut so it
-        /// blooms then settles.
-        static let highlightSweep: Animation = .easeOut(duration: 0.5)
+        /// Recency-highlight fade that decays a "just arrived" overlay
+        /// over 800ms. Used by SourceConnect's `LogEntryRow` to settle
+        /// each new entry into the log without turning the whole panel
+        /// into flicker. easeOut so the highlight blooms quickly then
+        /// settles slowly.
+        static let recencyFade: Animation = .easeOut(duration: 0.8)
 
         /// Sub-agent hierarchy connector lines growing from parent to
         /// child. Slightly slower than `microToggle` so the line draws

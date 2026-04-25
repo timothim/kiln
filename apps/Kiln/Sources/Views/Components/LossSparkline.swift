@@ -16,6 +16,12 @@ struct LossSparkline: View {
     let samples: [LossSample]
     var height: CGFloat = 84
     var showsGrid: Bool = true
+    /// `true` while training is actively producing new samples. The
+    /// glowing latest-point dot only pulses while live; pass `false` on
+    /// the completion screen to freeze the dot and free the TimelineView
+    /// budget. Defaults to `true` so existing call sites get the lively
+    /// behavior without opting in.
+    var isLive: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -24,8 +30,9 @@ struct LossSparkline: View {
             curveLayer
             // The latest-point indicator sits in its own TimelineView so
             // only the dot's alpha re-renders on each frame; the curve
-            // beneath is a static Canvas. Pauses cleanly when no data.
-            if !reduceMotion, samples.count >= 2 {
+            // beneath is a static Canvas. Static when training is over
+            // (`isLive == false`) or under Reduce Motion.
+            if !reduceMotion, isLive, samples.count >= 2 {
                 latestDotAnimated
             } else if samples.count >= 2 {
                 latestDotStatic
