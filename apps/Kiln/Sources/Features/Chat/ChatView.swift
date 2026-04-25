@@ -139,16 +139,32 @@ private struct ChatBubble: View {
                     .kerning(0.44)
                     .textCase(.uppercase)
                     .foregroundStyle(.tertiary)
-                Text(message.content.isEmpty && message.role == .assistant ? "…" : message.content)
-                    .font(Kiln.Font.body)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(Kiln.Space.m)
-                    .background {
-                        RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                            .fill(bubbleFill)
+                Group {
+                    if message.content.isEmpty && message.role == .assistant {
+                        // Streaming hasn't produced any tokens yet — show a
+                        // contextual indicator instead of a bare "…", which
+                        // reads as a stalled response on a 4K demo recording.
+                        HStack(spacing: Kiln.Space.xs) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Thinking…")
+                                .font(Kiln.Font.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("Your model is thinking")
+                    } else {
+                        Text(message.content)
+                            .font(Kiln.Font.body)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                .padding(Kiln.Space.m)
+                .background {
+                    RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                        .fill(bubbleFill)
+                }
             }
             if message.role == .assistant {
                 Spacer(minLength: Kiln.Space.xl)
@@ -162,7 +178,7 @@ private struct ChatBubble: View {
 
     private var bubbleFill: Color {
         message.role == .user
-            ? Color.primary.opacity(0.08)
+            ? Color.primary.opacity(Kiln.Opacity.trackFill)
             : Kiln.Palette.surfaceSunken
     }
 }

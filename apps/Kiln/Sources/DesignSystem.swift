@@ -134,6 +134,10 @@ enum Kiln {
     enum Opacity {
         static let cardFill: Double = 0.04
         static let codeFill: Double = 0.06
+        /// 8% primary — the louder neutral used on capsule tracks, skeleton
+        /// loaders, and the user-side chat bubble background. Distinguishes
+        /// "filled track" from the quieter `cardFill`.
+        static let trackFill: Double = 0.08
     }
 
     enum Layout {

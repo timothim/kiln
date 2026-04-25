@@ -13,7 +13,7 @@ struct TrainingProgressCapsule: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Capsule(style: .continuous)
-                .fill(Color.primary.opacity(0.08))
+                .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
 
             GeometryReader { proxy in
                 Capsule(style: .continuous)

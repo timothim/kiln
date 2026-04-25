@@ -154,7 +154,7 @@ struct ImportSourceButton: View {
                 .animation(Kiln.Motion.standard, value: progress.itemsSeen)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                     Capsule()
                         .fill(Kiln.Palette.firing)
                         .frame(width: barWidth(in: geo.size.width))

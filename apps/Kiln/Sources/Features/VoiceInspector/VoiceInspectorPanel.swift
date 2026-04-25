@@ -85,7 +85,7 @@ struct VoiceInspectorPanel: View {
         }
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
+                .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                 .frame(width: 1)
         }
         .accessibilityElement(children: .contain)
@@ -237,7 +237,7 @@ private struct SimilarityPill: View {
             .padding(.horizontal, Kiln.Space.xxs)
             .padding(.vertical, 2)
             .background {
-                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             }
             .accessibilityHidden(true)
     }

@@ -196,14 +196,14 @@ private struct StyleSignatureSkeletonCard: View {
 
     private var skeletonLine: some View {
         RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             .frame(maxWidth: .infinity)
             .frame(height: 13)
     }
 
     private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             .frame(width: width, height: height)
     }
 
@@ -413,7 +413,7 @@ private struct RegisterBadge: View {
         .padding(.horizontal, Kiln.Space.xs)
         .padding(.vertical, Kiln.Space.xxs)
         .background {
-            Capsule().fill(Color.primary.opacity(0.08))
+            Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
         }
         .accessibilityLabel("Dominant register: \(register.displayName)")
     }

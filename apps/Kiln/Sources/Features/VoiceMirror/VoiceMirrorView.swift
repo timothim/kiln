@@ -327,7 +327,7 @@ private struct SkeletonLines: View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             ForEach(widths.indices, id: \.self) { i in
                 RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                    .fill(Color.primary.opacity(0.08))
+                    .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                     .frame(height: 12)
                     .scaleEffect(x: widths[i], y: 1, anchor: .leading)
                     .opacity(pulse ? 1.0 : 0.45)
