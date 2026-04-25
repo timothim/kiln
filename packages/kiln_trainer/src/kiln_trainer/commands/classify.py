@@ -34,14 +34,18 @@ def _classify_one(text: str, *, mode: str, artifact_path: Path | None) -> dict:
     if mode == "style":
         # Single-text style extraction. The style module's idiom is corpus-
         # at-a-time (it pools chunk-level descriptors); we feed the one text
-        # as a single-element corpus.
-        profile = style.extract([text])
+        # as a single-element corpus. Trained regressor when an artifact
+        # path is supplied, heuristic fallback otherwise — the runner can
+        # ship without a model and still produce sensible output.
+        profile = style.extract([text], artifact_path=artifact_path)
         return profile.to_dict()
     if mode == "preference":
         # Single-row preference is meaningless without a counterpart; the
         # mode here scores ``text`` on the voice-vs-generic axis so the
-        # Swift caller can pair-rank later.
-        return {"voice_score": round(preference._voice_score(text), 6)}
+        # Swift caller can pair-rank later. The pairwise trained model
+        # is reachable via ``score_pair_trained(...)`` directly when both
+        # sides are available.
+        return {"voice_score": round(preference.voice_score(text), 6)}
     raise ValueError(f"unknown classifier mode: {mode}")
 
 
