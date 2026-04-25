@@ -122,9 +122,10 @@ struct VoiceMirrorView: View {
         if model.hasAnyContent {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: Kiln.Space.m) {
-                    ForEach(model.reflections) { reflection in
+                    ForEach(Array(model.reflections.enumerated()), id: \.element.id) { index, reflection in
                         VoiceMirrorColumn(
                             reflection: reflection,
+                            columnIndex: index,
                             userAnswer: $model.userAnswer,
                             onRetry: { model.retry(reflection.source) }
                         )
@@ -168,15 +169,25 @@ struct VoiceMirrorView: View {
 
 private struct VoiceMirrorColumn: View {
     let reflection: VoiceReflection
+    /// 0-based position in the row. Drives the staggered reveal so each
+    /// column appears 100ms after the previous one (200ms duration each,
+    /// per the Sunday animation brief). Allows the user-answer column to
+    /// land last as the "your truth" answer.
+    let columnIndex: Int
     @Binding var userAnswer: String
     let onRetry: () -> Void
 
     @State private var isHovered = false
     @State private var isPinned = false
+    @State private var hasRevealed = false
     @FocusState private var isFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isModelColumn: Bool { reflection.source != .userAnswer }
     private var isHighlighted: Bool { isHovered || isFocused || isPinned }
+    /// User-answer column is the truth source — slightly emphasized so
+    /// the eye returns to it after scanning the model outputs.
+    private var isUserTruth: Bool { reflection.source == .userAnswer }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
@@ -187,7 +198,19 @@ private struct VoiceMirrorColumn: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
+                .fill(Color.primary.opacity(
+                    isUserTruth ? Kiln.Opacity.codeFill : Kiln.Opacity.cardFill
+                ))
+        }
+        .overlay(alignment: .leading) {
+            // User-truth accent stripe along the leading edge — quiet
+            // but present, never amber (this isn't a firing moment).
+            if isUserTruth {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.6))
+                    .frame(width: 2)
+                    .padding(.vertical, Kiln.Space.xs)
+            }
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
@@ -195,6 +218,8 @@ private struct VoiceMirrorColumn: View {
                               lineWidth: 1)
                 .animation(Kiln.Motion.microToggle, value: isPinned)
         }
+        .opacity(hasRevealed ? 1 : 0)
+        .offset(y: hasRevealed ? 0 : 8)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -204,11 +229,50 @@ private struct VoiceMirrorColumn: View {
             guard isModelColumn, reflection.state == .done else { return }
             isPinned.toggle()
         }
+        .onAppear { revealIfReady() }
+        .onChange(of: reflection.state) { _, newState in
+            if newState == .done {
+                revealIfReady()
+            } else if newState == .generating {
+                // Re-trigger on the next done so a regenerate replays
+                // the stagger.
+                hasRevealed = false
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(a11yLabel)
         .accessibilityAction(named: pinActionName) {
             guard isModelColumn, reflection.state == .done else { return }
             isPinned.toggle()
+        }
+    }
+
+    /// Per-column delay schedule from the Sunday brief: column 0 leads
+    /// at 0ms, each subsequent column waits 100ms after the previous
+    /// finishes (~180ms staggerStep duration). Cumulative delay = idx *
+    /// 280ms; capped reasonably for >4 columns.
+    private func revealIfReady() {
+        guard reflection.state == .done, !hasRevealed else {
+            // Idle / generating columns hide. Failed columns reveal immediately
+            // so the user sees the error rather than an empty card.
+            if reflection.state != .generating {
+                hasRevealed = true
+            }
+            return
+        }
+        let delayMs = min(800, columnIndex * 280)
+        guard !reduceMotion else {
+            // Reduce Motion → reveal everything at once with no offset.
+            hasRevealed = true
+            return
+        }
+        Task { @MainActor in
+            if delayMs > 0 {
+                try? await Task.sleep(for: .milliseconds(delayMs))
+            }
+            withAnimation(Kiln.Motion.staggerStep) {
+                hasRevealed = true
+            }
         }
     }
 
