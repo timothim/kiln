@@ -200,10 +200,16 @@ emitted only during training.
 | `tokens_per_s`   | float   | yes      | Throughput.                                                                                    |
 | `prompt_id`      | string? | no       | When emitted by `sample-batch` / `sample-compare`, identifies which prompt or variant this is. |
 
-For `sample-compare`, `prompt_id` is the variant token — `"base"`,
-`"finetuned"`, or a blended ratio token. For `sample-batch`, it's the
-Growing-Model prompt id (`week_focus` etc.) which the parent `train` then
-re-emits as a §3.4 `sample` event with the checkpoint's `iter` injected.
+For `sample-compare`, `prompt_id` is the variant token — exactly one of
+`"base"`, `"sft"`, or `"sftdpo"` (matching `ALLOWED_TAGS` in
+[sample_compare.py](../../packages/kiln_trainer/src/kiln_trainer/commands/sample_compare.py)
+and `SampleCompareVariant` in
+[SampleCompareModels.swift](../../packages/KilnCore/Sources/KilnCore/Sampling/SampleCompareModels.swift)).
+Any blended display in the Voice Mirror UI is a client-side rendering of
+those three streams — there is no blend variant on the wire. For
+`sample-batch`, `prompt_id` is the Growing-Model prompt id (`week_focus`
+etc.) which the parent `train` then re-emits as a §3.4 `sample` event with
+the checkpoint's `iter` injected.
 
 ## 4. Subcommand event timelines
 
