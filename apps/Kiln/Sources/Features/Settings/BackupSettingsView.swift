@@ -84,24 +84,28 @@ final class BackupSettingsModel {
 struct BackupSettingsView: View {
     @State var model: BackupSettingsModel
 
+    /// Width matches the rest of the macOS settings surface; below this and
+    /// the passphrase NSAlert covers the whole panel.
+    private static let panelWidth: CGFloat = 460
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Kiln.Space.m) {
             header
             toggleRow
             actionRow
             statusRow
             footnote
         }
-        .padding(20)
-        .frame(width: 460)
+        .padding(Kiln.Space.l)
+        .frame(width: Self.panelWidth)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
             Text("Backups")
-                .font(.title2.weight(.semibold))
+                .font(Kiln.Font.title)
             Text("Encrypted local snapshots of your project. Off by default.")
-                .font(.callout)
+                .font(Kiln.Font.body)
                 .foregroundStyle(.secondary)
         }
     }
@@ -109,17 +113,20 @@ struct BackupSettingsView: View {
     private var toggleRow: some View {
         Toggle("Enable encrypted backups", isOn: $model.enabled)
             .toggleStyle(.switch)
+            .accessibilityHint("Turns on encrypted local snapshots. Nothing leaves your machine.")
     }
 
     @ViewBuilder
     private var actionRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Kiln.Space.sm) {
             Button("Back up now") {
                 Task { await runBackup() }
             }
             .disabled(!model.enabled || isRunning)
+            .accessibilityHint("Encrypts the active project and writes a snapshot to disk.")
             if isRunning {
                 ProgressView().controlSize(.small)
+                    .accessibilityLabel("Backing up")
             }
         }
     }
@@ -130,22 +137,23 @@ struct BackupSettingsView: View {
             case .idle:
                 EmptyView()
             case .running:
-                Text("Backing up…")
-                    .font(.callout)
+                Text("Backing up — your work stays on this machine.")
+                    .font(Kiln.Font.body)
                     .foregroundStyle(.secondary)
             case .succeeded(let url, let stamp):
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Backed up at \(stamp)")
-                        .font(.callout)
+                VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+                    Text("Backed up \(formattedTimestamp(stamp))")
+                        .font(Kiln.Font.body)
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                     .controlSize(.small)
+                    .accessibilityLabel("Show backup bundle in Finder")
                 }
             case .failed(let message):
                 Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(Kiln.Palette.danger)
             }
         }
     }
@@ -153,14 +161,21 @@ struct BackupSettingsView: View {
     @ViewBuilder
     private var footnote: some View {
         if let stamp = model.lastBackupISO8601 {
-            Text("Last successful backup: \(stamp)")
-                .font(.footnote)
+            Text("Last successful backup: \(formattedTimestamp(stamp))")
+                .font(Kiln.Font.caption)
                 .foregroundStyle(.secondary)
         } else {
-            Text("No backups yet.")
-                .font(.footnote)
+            Text("No backups yet — turn on encrypted backups above to start.")
+                .font(Kiln.Font.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Format an ISO8601 timestamp as a relative-then-absolute string.
+    /// "2 minutes ago" reads better in a settings pane than the raw stamp.
+    private func formattedTimestamp(_ iso: String) -> String {
+        guard let date = ISO8601DateFormatter().date(from: iso) else { return iso }
+        return date.formatted(.relative(presentation: .named))
     }
 
     private var isRunning: Bool {
@@ -200,7 +215,7 @@ struct BackupSettingsView: View {
     BackupSettingsView(
         model: BackupSettingsModel(
             service: DiskBackupService(),
-            defaults: UserDefaults(suiteName: "preview-idle")!
+            defaults: UserDefaults(suiteName: "preview-idle") ?? .standard
         )
     )
 }
