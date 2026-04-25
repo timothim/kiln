@@ -92,7 +92,7 @@ struct VoiceMirrorView: View {
                 .padding(.vertical, Kiln.Space.xs)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
+                        .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
                 }
                 .accessibilityLabel("Voice mirror prompt")
 
@@ -187,13 +187,13 @@ private struct VoiceMirrorColumn: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
                 .strokeBorder(Kiln.Palette.firing.opacity(isPinned ? 0.45 : 0),
                               lineWidth: 1)
-                .animation(.smooth(duration: 0.25), value: isPinned)
+                .animation(Kiln.Motion.microToggle, value: isPinned)
         }
         .onHover { hovering in
             isHovered = hovering
@@ -231,7 +231,7 @@ private struct VoiceMirrorColumn: View {
                     .accessibilityHidden(true)
             }
         }
-        .animation(.smooth(duration: 0.2), value: isPinned)
+        .animation(Kiln.Motion.microToggle, value: isPinned)
     }
 
     @ViewBuilder
@@ -271,7 +271,7 @@ private struct VoiceMirrorColumn: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.smooth(duration: 0.25), value: isHighlighted)
+                .animation(Kiln.Motion.microToggle, value: isHighlighted)
         case let .failed(message):
             VStack(alignment: .leading, spacing: Kiln.Space.xs) {
                 Text(message)
@@ -327,14 +327,14 @@ private struct SkeletonLines: View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             ForEach(widths.indices, id: \.self) { i in
                 RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                    .fill(Color.primary.opacity(0.08))
+                    .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                     .frame(height: 12)
                     .scaleEffect(x: widths[i], y: 1, anchor: .leading)
                     .opacity(pulse ? 1.0 : 0.45)
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            withAnimation(Kiln.Motion.skeletonPulse) {
                 pulse = true
             }
         }

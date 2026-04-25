@@ -107,7 +107,7 @@ struct ImportSourceButton: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .animation(Kiln.Motion.standard, value: isRunning)
         .animation(Kiln.Motion.standard, value: permission)
@@ -140,6 +140,8 @@ struct ImportSourceButton: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
+            .accessibilityLabel(actionLabel)
+            .accessibilityHint("\(source.displayName): \(source.subtitle)")
         }
     }
 
@@ -152,7 +154,7 @@ struct ImportSourceButton: View {
                 .animation(Kiln.Motion.standard, value: progress.itemsSeen)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                     Capsule()
                         .fill(Kiln.Palette.firing)
                         .frame(width: barWidth(in: geo.size.width))
@@ -233,7 +235,10 @@ struct ImportSourceButton: View {
             onComplete(progress)
         } catch {
             isRunning = false
-            lastError = "Import failed: \(error.localizedDescription)"
+            // DESIGN.md: errors name the fix. The localizedDescription is
+            // shown after the recovery instruction so the user reads "what
+            // to do" first.
+            lastError = "Check Privacy & Security in System Settings, then try again. (\(error.localizedDescription))"
         }
     }
 

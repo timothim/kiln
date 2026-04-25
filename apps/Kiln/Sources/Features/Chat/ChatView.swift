@@ -2,17 +2,69 @@ import SwiftUI
 import KilnCore
 
 /// Chat pane for the completed-project stage. Renders the rolling
-/// conversation and a prompt box wired into ``ChatModel``.
+/// conversation and a prompt box wired into ``ChatModel``. When an
+/// optional ``VoiceInspectorModel`` is supplied (M9.B / Phase 1.5),
+/// tapping any assistant message opens the side panel showing the
+/// three corpus chunks closest to that response in voice-embedding
+/// space.
 struct ChatView: View {
     @Bindable var model: ChatModel
+    /// Optional Voice Inspector. When nil the side panel is not
+    /// rendered — production callers attach it after ingest finishes
+    /// (so the corpus is available); previews and idle states pass nil.
+    /// Plain ``let`` rather than ``@Bindable`` because the optional
+    /// type isn't Bindable-compatible; the view re-renders via the
+    /// ``@Observable`` macro on ``VoiceInspectorModel`` itself.
+    let inspector: VoiceInspectorModel?
+
+    init(model: ChatModel, inspector: VoiceInspectorModel? = nil) {
+        self._model = Bindable(model)
+        self.inspector = inspector
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            Divider()
-            composer
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                transcript
+                Divider()
+                composer
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let inspector, inspector.selection != nil {
+                VoiceInspectorPanel(
+                    selection: inspector.selection,
+                    nearestSamples: inspector.nearestSamples,
+                    isLoading: inspector.isLoading,
+                    onDismiss: { inspector.dismiss() }
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(Kiln.Motion.standard, value: inspector?.selection != nil)
+    }
+
+    /// Convert a chat-bubble tap into a Voice Inspector selection.
+    /// Only assistant messages open the inspector — tapping a user
+    /// bubble does nothing (there's no model output to attribute).
+    /// The "highlighted span" defaults to the first sentence of the
+    /// reply; full-span selection is a follow-up that needs a richer
+    /// gesture than a single tap.
+    private func handleBubbleTap(_ message: ChatMessage) {
+        guard let inspector, message.role == .assistant else { return }
+        let content = message.content
+        guard !content.isEmpty else { return }
+        let firstSentence = content
+            .split(whereSeparator: { ".!?\n".contains($0) })
+            .first
+            .map(String.init) ?? content
+        inspector.selectSpan(
+            InspectorSelection(
+                generatedSentence: content,
+                highlightedSpan: firstSentence,
+                logOddsTopTerms: []
+            )
+        )
     }
 
     private var transcript: some View {
@@ -25,6 +77,10 @@ struct ChatView: View {
                         ForEach(model.messages) { message in
                             ChatBubble(message: message)
                                 .id(message.id)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    handleBubbleTap(message)
+                                }
                         }
                     }
                     if case .failed(let msg) = model.status {
@@ -91,7 +147,7 @@ struct ChatView: View {
                 .padding(.vertical, Kiln.Space.xs)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
+                        .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
                 }
                 .accessibilityLabel("Message composer")
 
@@ -139,16 +195,32 @@ private struct ChatBubble: View {
                     .kerning(0.44)
                     .textCase(.uppercase)
                     .foregroundStyle(.tertiary)
-                Text(message.content.isEmpty && message.role == .assistant ? "…" : message.content)
-                    .font(Kiln.Font.body)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(Kiln.Space.m)
-                    .background {
-                        RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                            .fill(bubbleFill)
+                Group {
+                    if message.content.isEmpty && message.role == .assistant {
+                        // Streaming hasn't produced any tokens yet — show a
+                        // contextual indicator instead of a bare "…", which
+                        // reads as a stalled response on a 4K demo recording.
+                        HStack(spacing: Kiln.Space.xs) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Thinking…")
+                                .font(Kiln.Font.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("Your model is thinking")
+                    } else {
+                        Text(message.content)
+                            .font(Kiln.Font.body)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                .padding(Kiln.Space.m)
+                .background {
+                    RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
+                        .fill(bubbleFill)
+                }
             }
             if message.role == .assistant {
                 Spacer(minLength: Kiln.Space.xl)
@@ -162,7 +234,7 @@ private struct ChatBubble: View {
 
     private var bubbleFill: Color {
         message.role == .user
-            ? Color.primary.opacity(0.08)
+            ? Color.primary.opacity(Kiln.Opacity.trackFill)
             : Kiln.Palette.surfaceSunken
     }
 }
@@ -175,4 +247,11 @@ private struct ChatBubble: View {
 #Preview("Existing conversation") {
     ChatView(model: ChatModel.mockConversation())
         .frame(width: 760, height: 520)
+}
+
+#Preview("With Voice Inspector (M9.B / Phase 1.5)") {
+    let chatModel = ChatModel.mockConversation()
+    let inspector = VoiceInspectorModel.disabled
+    return ChatView(model: chatModel, inspector: inspector)
+        .frame(width: 1080, height: 520)
 }

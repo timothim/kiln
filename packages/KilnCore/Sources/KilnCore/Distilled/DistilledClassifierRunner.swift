@@ -136,38 +136,57 @@ public final class SubprocessDistilledClassifierRunner: QualityClassifierRunner,
         expected: Int
     ) async throws -> [(String, [String: Any])] {
         let log = self.log
-        return try await Task.detached(priority: .userInitiated) { [launcher] in
-            let process = Process()
-            let stdout = Pipe()
-            let stderr = Pipe()
+        // Saturday-audit T2: pre-launch cancellation check + SIGTERM
+        // hook on outer-task cancellation. ``Task.detached`` does not
+        // propagate the parent's cancellation, so we register a
+        // ``withTaskCancellationHandler`` whose ``onCancel`` runs on
+        // the cancelling task and SIGTERMs the child synchronously.
+        try Task.checkCancellation()
 
-            process.executableURL = launcher.executableURL
-            process.arguments = launcher.argumentPrefix + subcommandArgs
-            if let cwd = launcher.workingDirectory {
-                process.currentDirectoryURL = cwd
-            }
-            if let env = launcher.environment {
-                process.environment = env
-            }
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = launcher.executableURL
+        process.arguments = launcher.argumentPrefix + subcommandArgs
+        if let cwd = launcher.workingDirectory {
+            process.currentDirectoryURL = cwd
+        }
+        if let env = launcher.environment {
+            process.environment = env
+        }
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            do {
-                try process.run()
-            } catch {
-                throw DistilledClassifierError.launchFailed(message: error.localizedDescription)
-            }
+        // Wrap the Process in a tiny @unchecked Sendable box so we can
+        // reach it from the cancellation handler without crossing the
+        // Sendable warning. ``Process`` is internally thread-safe for
+        // ``isRunning`` / ``terminate`` calls.
+        struct ProcessBox: @unchecked Sendable { let p: Process }
+        let box = ProcessBox(p: process)
 
-            // Read stdout/stderr to EOF synchronously. The classify
-            // subcommand emits a small bounded stream (≤ N+2 lines for
-            // N inputs), well under the 64 KB pipe buffer, so a single
-            // ``readDataToEndOfFile`` is the simplest correct pattern.
-            // Streaming via ``bytes.lines`` was tried first and hung
-            // intermittently when the suite ran sibling tests beforehand
-            // — the FileHandle async iterator did not always see EOF
-            // when the child exited, leaving the read blocked forever.
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                do {
+                    try process.run()
+                } catch {
+                    throw DistilledClassifierError.launchFailed(message: error.localizedDescription)
+                }
+
+            // Read stdout and stderr concurrently to EOF — verifier T3
+            // finding from PR #15 / PR #17. Reading them sequentially
+            // (stdout first) deadlocks if the child ever fills the
+            // 64 KB stderr pipe buffer before closing stdout (e.g. a
+            // sklearn version-skew traceback on a corrupted pickle).
+            // The classify / embed-search subcommands are bounded in
+            // practice but a real production failure mode still
+            // motivates the concurrent drain.
+            //
+            // ``Task.detached`` runs both pipe reads off the cooperative
+            // pool; ``readDataToEndOfFile`` is otherwise the same call.
+            async let stdoutTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }.value
+            async let stderrTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }.value
+            let stdoutData = await stdoutTask
+            let stderrData = await stderrTask
 
             process.waitUntilExit()
 
@@ -220,7 +239,16 @@ public final class SubprocessDistilledClassifierRunner: QualityClassifierRunner,
                 )
             }
             return collected
-        }.value
+            }.value
+        } onCancel: {
+            // Outer task was cancelled; SIGTERM the child so the
+            // detached body's ``waitUntilExit`` returns and the
+            // continuation completes. ``terminate`` is a no-op if the
+            // child already exited.
+            if box.p.isRunning {
+                box.p.terminate()
+            }
+        }
     }
 
     private static func writeInputJSONL(rows: [ClassifierInputRow]) throws -> URL {

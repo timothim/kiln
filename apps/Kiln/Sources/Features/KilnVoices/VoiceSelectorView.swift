@@ -70,7 +70,7 @@ struct VoiceSelectorView: View {
         .padding(.vertical, Kiln.Space.xxs)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .contentShape(Rectangle())
     }

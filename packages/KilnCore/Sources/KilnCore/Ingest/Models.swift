@@ -117,6 +117,17 @@ public struct IngestReport: Codable, Sendable, Hashable {
     public var chunksAfterExactDedup: Int = 0
     public var chunksAfterMinHashDedup: Int = 0
     public var chunksAfterQuality: Int = 0
+    /// Count after the M9.C distilled-classifier quality gate fires.
+    /// When the classifier isn't available (no artifact present, runner
+    /// not configured), this equals ``chunksAfterQuality`` — the gate
+    /// is additive and degrades gracefully to a no-op.
+    public var chunksAfterClassifierQuality: Int = 0
+    /// Per-bucket counts produced by the M9.C classifier on the chunks
+    /// that survived the rule-based quality stage. ``keep`` flows on,
+    /// ``chosen_only`` is held back for DPO chosen-only feedstock,
+    /// ``discard`` is dropped before training. All zero when the gate
+    /// degrades to no-op.
+    public var classifierBuckets: ClassifierBucketCounts = ClassifierBucketCounts()
     public var qualityBreakdown: QualityBreakdown = QualityBreakdown()
     public var softRejectedCount: Int = 0
     public var hardRejectedCount: Int = 0
@@ -125,6 +136,22 @@ public struct IngestReport: Codable, Sendable, Hashable {
     public var outputPaths: OutputPaths?
 
     public init() {}
+}
+
+public struct ClassifierBucketCounts: Codable, Sendable, Hashable {
+    public var keep: Int = 0
+    public var chosenOnly: Int = 0
+    public var discard: Int = 0
+
+    public init(keep: Int = 0, chosenOnly: Int = 0, discard: Int = 0) {
+        self.keep = keep
+        self.chosenOnly = chosenOnly
+        self.discard = discard
+    }
+
+    /// Total scored. When zero the classifier didn't run (gate
+    /// degraded to no-op).
+    public var total: Int { keep + chosenOnly + discard }
 }
 
 public enum IngestStage: String, Codable, Sendable, Hashable, CaseIterable {

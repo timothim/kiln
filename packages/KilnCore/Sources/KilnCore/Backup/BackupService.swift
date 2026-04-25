@@ -123,6 +123,11 @@ public final class DiskBackupService: BackupService, @unchecked Sendable {
         }
 
         for entry in payload.entries {
+            // Verifier T3 (PR #16): reject any entry whose path is
+            // absolute or contains a ``..`` segment. Self-DoS in the
+            // single-user threat model, but a tampered/hand-crafted
+            // bundle would otherwise land bytes outside the destination.
+            try Self.assertSafeEntryPath(entry.path)
             guard let bytes = Data(base64Encoded: entry.contentsBase64) else {
                 throw BackupError.payloadDecodeFailed(
                     message: "entry \(entry.path) had invalid base64"
@@ -134,6 +139,20 @@ public final class DiskBackupService: BackupService, @unchecked Sendable {
             try bytes.write(to: target, options: .atomic)
         }
         return destinationDirectory
+    }
+
+    /// Reject absolute paths or any path containing a ``..`` component.
+    /// Per-entry guard called before ``URL.appendingPathComponent`` so a
+    /// malformed bundle can't escape ``destinationDirectory``.
+    static func assertSafeEntryPath(_ path: String) throws {
+        if path.hasPrefix("/") {
+            throw BackupError.unsafeEntryPath(path: path)
+        }
+        for component in path.split(separator: "/") {
+            if component == ".." {
+                throw BackupError.unsafeEntryPath(path: path)
+            }
+        }
     }
 
     public func metadata(

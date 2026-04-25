@@ -175,6 +175,108 @@ final class DistilledClassifierRunnerTests: XCTestCase {
         }
     }
 
+    // MARK: - Concurrent stderr drain regression
+
+    func test_runner_does_not_deadlock_on_large_stderr_burst() async throws {
+        // Verifier T3 from PR #15: reading stdout to EOF before stderr
+        // would deadlock if the child fills the 64 KB stderr pipe before
+        // closing stdout. Concurrent drain (async-let × 2) removes the
+        // hazard. Regression test: emit ~80 KB of stderr before stdout.
+        let stderrBlast = String(repeating: "x", count: 80 * 1024)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-stderr-blast-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let blastFile = dir.appendingPathComponent("blast.txt")
+        try stderrBlast.write(to: blastFile, atomically: true, encoding: .utf8)
+        let script = dir.appendingPathComponent("fake-noisy.sh")
+        let body = """
+        #!/bin/bash
+        cat \(blastFile.path) >&2
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        echo '{"event":"classification","request_id":"r1","kind":"quality","payload":{"score":0.5,"bucket":"chosen_only"}}'
+        echo '{"event":"done","stage":"classify","artifact":"stdout","interrupted":false}'
+        exit 0
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script,
+            argumentPrefix: [],
+            workingDirectory: dir,
+            environment: nil
+        )
+        let runner = SubprocessDistilledClassifierRunner(
+            launcher: launcher,
+            qualityArtifactPath: URL(fileURLWithPath: "/tmp/fake.pkl")
+        )
+        // The test fails by hanging if the drain order is wrong — XCTest's
+        // per-test timeout (default 60s) catches it.
+        let result = try await runner.classify([
+            ClassifierInputRow(requestID: "r1", text: "anything")
+        ])
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].requestID, "r1")
+    }
+
+    // MARK: - Cancellation regression (Saturday-audit T2)
+
+    func test_runner_terminates_subprocess_on_outer_task_cancellation() async throws {
+        // Spawn a fake script that sleeps far longer than the test
+        // budget, send a parent-task cancellation, and assert the
+        // runner terminates the child instead of waiting for it.
+        // Without the cancellation watcher this test hangs forever
+        // (caught by XCTest's per-test timeout).
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-cancel-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("fake-slow.sh")
+        // 30 s sleep is well above the 5-second test deadline; if the
+        // runner does not terminate the child the Task.cancel will
+        // resolve before the script's natural exit but the await on
+        // .value will still hang waiting for waitUntilExit.
+        let body = """
+        #!/bin/bash
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        sleep 30
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script,
+            argumentPrefix: [],
+            workingDirectory: dir,
+            environment: nil
+        )
+        let runner = SubprocessDistilledClassifierRunner(
+            launcher: launcher,
+            qualityArtifactPath: URL(fileURLWithPath: "/tmp/fake.pkl")
+        )
+
+        let task = Task {
+            try await runner.classify([
+                ClassifierInputRow(requestID: "r1", text: "anything")
+            ])
+        }
+        // Give the script time to start, then cancel.
+        try await Task.sleep(nanoseconds: 500_000_000)
+        task.cancel()
+        // Result should resolve quickly (within ~1 s of cancel) rather
+        // than waiting 30s for the sleep. Either an error or empty
+        // results — both are fine. The point is non-hang.
+        let start = Date()
+        _ = try? await task.value
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 4.0, "runner did not honour cancellation; took \(elapsed) s")
+    }
+
     // MARK: - Empty input fast path
 
     func test_classify_returns_empty_for_empty_input_without_launching() async throws {

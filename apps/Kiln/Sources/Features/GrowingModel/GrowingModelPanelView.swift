@@ -131,7 +131,7 @@ private struct GrowingModelPromptCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)
@@ -164,7 +164,7 @@ private struct GrowingModelPromptCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .contentTransition(.opacity)
-            .animation(.smooth(duration: 0.6), value: sample.currentResponse)
+            .animation(Kiln.Motion.sampleReveal, value: sample.currentResponse)
     }
 
     @ViewBuilder

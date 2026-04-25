@@ -73,6 +73,22 @@ final class VoiceInspectorModel {
         self.corpusProvider = corpusProvider
     }
 
+    /// Inert sentinel for SwiftUI views that take an optional Inspector
+    /// model but use the same property type. Selection always stays nil
+    /// so the side panel never renders. Returned by the no-inspector
+    /// branch in views that don't yet have a runner attached.
+    static let disabled: VoiceInspectorModel = {
+        final class _NoopRunner: EmbedSearchRunner, @unchecked Sendable {
+            func search(
+                query: String,
+                corpus: [EmbedSearchCorpusRow],
+                topK: Int,
+                embedder: String
+            ) async throws -> [EmbedSearchMatch] { [] }
+        }
+        return VoiceInspectorModel(runner: _NoopRunner())
+    }()
+
     /// Set a new selection and kick off a search. Idempotent: passing
     /// the same selection cancels any in-flight call to avoid a stale
     /// answer overwriting a fresh one.

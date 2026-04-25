@@ -49,7 +49,7 @@ struct ShareExportSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.m) {
             header
-            Divider().opacity(0.4)
+            Divider()
             if let result {
                 successBlock(result)
             } else {
@@ -57,7 +57,7 @@ struct ShareExportSheet: View {
                 includeBlock
             }
             Spacer(minLength: 0)
-            Divider().opacity(0.4)
+            Divider()
             footer
         }
         .padding(Kiln.Space.l)
@@ -96,7 +96,7 @@ struct ShareExportSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 
@@ -111,16 +111,22 @@ struct ShareExportSheet: View {
                                 detail: "PNG of the style summary.")
                 }
                 .toggleStyle(.switch)
+                .accessibilityLabel("Include signature card")
+                .accessibilityHint("Adds a PNG render of the style summary to the bundle.")
                 Toggle(isOn: $options.readme) {
                     toggleLabel(title: "README",
                                 detail: "Plain-text import instructions.")
                 }
                 .toggleStyle(.switch)
+                .accessibilityLabel("Include README")
+                .accessibilityHint("Adds plain-text import instructions to the bundle.")
                 Toggle(isOn: $options.sourceManifest) {
                     toggleLabel(title: "Source manifest",
                                 detail: "SHA-256 list of corpus chunks that trained this voice. No text content is included.")
                 }
                 .toggleStyle(.switch)
+                .accessibilityLabel("Include source manifest")
+                .accessibilityHint("Adds a list of SHA-256 hashes for the training chunks. No original text leaves the device.")
             }
         }
     }
@@ -130,8 +136,14 @@ struct ShareExportSheet: View {
             HStack(spacing: Kiln.Space.xs) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: Kiln.Icon.small + 2))
-                    .foregroundStyle(Kiln.Palette.firing)
-                Text("Exported \(result.filename)")
+                    // System green is the macOS-native success semantic — DESIGN.md
+                    // forbids `firing` on success ticks, and this checkmark is the
+                    // demo's last-beat success state. Adapts to dark mode.
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
+                // The single permitted exclamation mark in the entire app —
+                // DESIGN.md §Typography sanctions it on this exact screen.
+                Text("Exported \(result.filename)!")
                     .font(Kiln.Font.body.weight(.semibold))
                 Spacer(minLength: 0)
                 Button {
@@ -154,7 +166,7 @@ struct ShareExportSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
             }
             importInstructionsBlock(filename: result.filename)
         }
@@ -182,11 +194,14 @@ struct ShareExportSheet: View {
                 .font(Kiln.Font.mono)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
-                .padding(Kiln.Space.xs)
+                // Bumped padding and opacity over the rest of the sheet — this
+                // command is the literal next step the recipient runs, and the
+                // demo needs it readable from a 4K screen recording.
+                .padding(Kiln.Space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
+                        .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                 }
         }
     }
@@ -320,19 +335,6 @@ struct ShareExportSheet: View {
     }
 
     private enum CopyFeedback: Equatable { case copied }
-}
-
-// MARK: - Shared section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-    }
 }
 
 // MARK: - Previews

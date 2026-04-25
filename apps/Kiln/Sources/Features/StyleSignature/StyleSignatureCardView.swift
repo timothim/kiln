@@ -182,11 +182,11 @@ private struct StyleSignatureSkeletonCard: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                .stroke(Color.primary.opacity(Kiln.Opacity.codeFill), lineWidth: 1)
         }
         .opacity(pulse ? 1.0 : 0.55)
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+            withAnimation(Kiln.Motion.skeletonPulse) {
                 pulse = true
             }
         }
@@ -196,14 +196,14 @@ private struct StyleSignatureSkeletonCard: View {
 
     private var skeletonLine: some View {
         RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             .frame(maxWidth: .infinity)
             .frame(height: 13)
     }
 
     private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             .frame(width: width, height: height)
     }
 
@@ -213,7 +213,7 @@ private struct StyleSignatureSkeletonCard: View {
             FlowLayout(spacing: Kiln.Space.xs) {
                 ForEach(chipWidths.indices, id: \.self) { i in
                     Capsule()
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                         .frame(width: chipWidths[i], height: 20)
                 }
             }
@@ -342,19 +342,6 @@ struct StyleSignatureCardArt: View {
     }
 }
 
-// MARK: - Section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-    }
-}
-
 // MARK: - Word cloud
 
 private struct SignaturePhraseCloud: View {
@@ -369,7 +356,7 @@ private struct SignaturePhraseCloud: View {
                     .padding(.horizontal, Kiln.Space.xs)
                     .padding(.vertical, Kiln.Space.xxs)
                     .background {
-                        Capsule().fill(Color.primary.opacity(0.06))
+                        Capsule().fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     }
             }
         }
@@ -426,7 +413,7 @@ private struct RegisterBadge: View {
         .padding(.horizontal, Kiln.Space.xs)
         .padding(.vertical, Kiln.Space.xxs)
         .background {
-            Capsule().fill(Color.primary.opacity(0.08))
+            Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
         }
         .accessibilityLabel("Dominant register: \(register.displayName)")
     }

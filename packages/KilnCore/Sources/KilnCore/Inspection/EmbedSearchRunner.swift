@@ -87,34 +87,45 @@ public final class SubprocessEmbedSearchRunner: EmbedSearchRunner, @unchecked Se
 
     private func runProcess(arguments subcommandArgs: [String]) async throws -> [EmbedSearchMatch] {
         let log = self.log
-        return try await Task.detached(priority: .userInitiated) { [launcher] in
-            let process = Process()
-            let stdout = Pipe()
-            let stderr = Pipe()
+        try Task.checkCancellation()
 
-            process.executableURL = launcher.executableURL
-            process.arguments = launcher.argumentPrefix + subcommandArgs
-            if let cwd = launcher.workingDirectory {
-                process.currentDirectoryURL = cwd
-            }
-            if let env = launcher.environment {
-                process.environment = env
-            }
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = launcher.executableURL
+        process.arguments = launcher.argumentPrefix + subcommandArgs
+        if let cwd = launcher.workingDirectory {
+            process.currentDirectoryURL = cwd
+        }
+        if let env = launcher.environment {
+            process.environment = env
+        }
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            do {
-                try process.run()
-            } catch {
-                throw EmbedSearchError.launchFailed(message: error.localizedDescription)
-            }
+        struct ProcessBox: @unchecked Sendable { let p: Process }
+        let box = ProcessBox(p: process)
 
-            // Synchronous read-to-EOF — output is bounded (≤ topK + 2 lines).
-            // Same rationale as ``SubprocessDistilledClassifierRunner``: the
-            // streaming async-bytes path hangs intermittently in the suite
-            // when sibling tests run first; sync read avoids that entirely.
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                do {
+                    try process.run()
+                } catch {
+                    throw EmbedSearchError.launchFailed(message: error.localizedDescription)
+                }
+
+            // Read stdout and stderr concurrently — verifier T3 finding
+            // from PR #17. Reading sequentially (stdout first) deadlocks
+            // if the child ever fills the 64 KB stderr pipe buffer
+            // before closing stdout (e.g. a sentence-transformers
+            // traceback during a degraded HF download). Bounded in
+            // practice (top-K ≤ a handful of lines, ST runs silent
+            // steady-state) but the concurrent drain removes the
+            // latent footgun entirely.
+            async let stdoutTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }.value
+            async let stderrTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }.value
+            let stdoutData = await stdoutTask
+            let stderrData = await stderrTask
             process.waitUntilExit()
 
             let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
@@ -171,7 +182,12 @@ public final class SubprocessEmbedSearchRunner: EmbedSearchRunner, @unchecked Se
             // future sidecar bug without scrambling the UI.
             matches.sort { $0.rank < $1.rank }
             return matches
-        }.value
+            }.value
+        } onCancel: {
+            if box.p.isRunning {
+                box.p.terminate()
+            }
+        }
     }
 
     private static func writeCorpusJSONL(rows: [EmbedSearchCorpusRow]) throws -> URL {

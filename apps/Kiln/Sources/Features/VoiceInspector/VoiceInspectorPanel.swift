@@ -85,7 +85,7 @@ struct VoiceInspectorPanel: View {
         }
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
+                .fill(Color.primary.opacity(Kiln.Opacity.trackFill))
                 .frame(width: 1)
         }
         .accessibilityElement(children: .contain)
@@ -160,7 +160,7 @@ struct VoiceInspectorPanel: View {
             Text("Select a phrase")
                 .font(Kiln.Font.body)
                 .foregroundStyle(.secondary)
-            Text("Click any span of generated text to see the five training samples closest to it in your voice-extractor embedding.")
+            Text("Click any span of generated text to see the training samples closest to it in your voice-extractor embedding.")
                 .font(Kiln.Font.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -212,7 +212,7 @@ private struct NearestSampleRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)
@@ -237,7 +237,7 @@ private struct SimilarityPill: View {
             .padding(.horizontal, Kiln.Space.xxs)
             .padding(.vertical, 2)
             .background {
-                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule().fill(Color.primary.opacity(Kiln.Opacity.trackFill))
             }
             .accessibilityHidden(true)
     }
@@ -259,23 +259,10 @@ private struct TermChipRow: View {
                     .padding(.horizontal, Kiln.Space.xxs)
                     .padding(.vertical, 2)
                     .background {
-                        Capsule().fill(Color.primary.opacity(0.06))
+                        Capsule().fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     }
             }
         }
-    }
-}
-
-// MARK: - Shared section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
     }
 }
 
@@ -288,13 +275,13 @@ private struct InspectorLoadingRows: View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     .frame(height: 64)
                     .opacity(pulse ? 1.0 : 0.55)
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            withAnimation(Kiln.Motion.skeletonPulse) {
                 pulse = true
             }
         }

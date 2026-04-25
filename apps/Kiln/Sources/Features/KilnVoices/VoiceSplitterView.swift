@@ -99,7 +99,7 @@ struct VoiceSplitterView: View {
         .padding(Kiln.Space.m)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 
@@ -155,7 +155,7 @@ private struct PersonaChip: View {
             .padding(Kiln.Space.m)
             .background {
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                    .fill(persona.selected ? Kiln.Palette.firingWash : Color.primary.opacity(0.04))
+                    .fill(persona.selected ? Kiln.Palette.firingWash : Color.primary.opacity(Kiln.Opacity.cardFill))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)

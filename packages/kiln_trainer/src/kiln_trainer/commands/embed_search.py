@@ -82,15 +82,37 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     rows: list[tuple[str, str]] = []
+    skipped_malformed = 0
     try:
         with open(args.corpus_file, encoding="utf-8") as fh:
-            for line in fh:
+            for line_no, line in enumerate(fh, start=1):
                 line = line.strip()
                 if not line:
                     continue
-                obj = json.loads(line)
+                # Verifier T3 from PR #17: per-row try/except so a
+                # single malformed line emits a recoverable error event
+                # and the run continues instead of dying with a Python
+                # stack on stderr (which would also skip the terminal
+                # ``done`` event the spec promises).
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    skipped_malformed += 1
+                    events.emit(
+                        events.error(
+                            code="data_invalid",
+                            message=f"line {line_no} is not valid JSON: {exc.msg}",
+                            recoverable=True,
+                        )
+                    )
+                    continue
                 rid = str(obj.get("request_id") or len(rows))
                 text = obj.get("text") or ""
+                # Filter empty-text rows up-front (verifier T4 from PR
+                # #17): an empty input still yields a degenerate
+                # embedding and noisy similarity score.
+                if not text.strip():
+                    continue
                 rows.append((rid, text))
     except FileNotFoundError as exc:
         events.emit(

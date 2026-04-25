@@ -84,6 +84,11 @@ public enum BackupError: Error, Equatable, Sendable {
     case destinationUnavailable(path: String)
     /// User passphrase was empty or under the minimum length.
     case passphraseTooShort
+    /// A bundle entry's relative path attempted to escape the destination
+    /// directory (absolute path, or `..` segments). Verifier T3 finding
+    /// from PR #16: a tampered or hand-crafted bundle could otherwise
+    /// land bytes outside the chosen restore target.
+    case unsafeEntryPath(path: String)
 }
 
 public enum BackupSettings {

@@ -1,38 +1,58 @@
 """Style extractor — corpus -> ``{descriptors, distinctive_ngrams,
 markdown_card}``.
 
-Output shape matches the Opus-4.7 style profiles at
-``managed-agents/style-extractor/runs/.../style-profiles.jsonl``:
+Two halves:
 
-    {
-      "style_descriptors": {
-        "formality": float [0, 1],
-        "verbosity": float [0, 1],
-        "warmth": float [0, 1],
-        "hedging": float [0, 1],
-        "humor": float [0, 1],
-        "directness": float [0, 1]
-      },
-      "distinctive_ngrams": list[str],
-      "style_card_md": str
-    }
+1. **Trained 6-axis regressor** (M9.C Phase 0). Sentence-transformers/
+   all-MiniLM-L6-v2 embedding → multi-output Ridge regression → six
+   axes (formality / verbosity / warmth / hedging / humor / directness),
+   each clamped to [0, 1]. Trained against the 1500 Opus-4.7 style
+   profiles, recovered by re-running the deterministic seed-based input
+   generator at ``scripts/opus-distill/build_style_input.py`` and
+   joining via ``scripts/opus-distill/recover_inputs.py``. Held-out MAE
+   per axis is reported by ``train(...)``. The trained model lives at
+   ``packages/kiln_trainer/artifacts/style-regressor.pkl``.
 
-The descriptors are computed deterministically from surface features
-(no model). The distinctive n-grams are pulled by TF-IDF against a
-small generic-English background corpus we ship inline — this keeps
-the extractor runnable without any external download and produces
-output close enough in distribution to the Opus profiles for the
-demo's narrative purpose. The ``style_card_md`` is a deterministic
-template fill from the descriptors + n-grams.
+2. **Deterministic distinctive-ngram extractor.** TF-IDF against an
+   inline corporate-English background corpus, returns the top-K
+   user-corpus n-grams by score-difference. No training — Opus's
+   "distinctive_ngrams" output is an analytical pick, not a learnable
+   target, so we keep the deterministic computation that mirrors what
+   a human reviewer would pull out.
+
+The earlier heuristic descriptor functions (``_formality``,
+``_verbosity`` etc.) are kept as a fallback when the trained artifact
+isn't available.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import pickle
 import re
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import Ridge
+from sklearn.multioutput import MultiOutputRegressor
+
+RANDOM_STATE = 1337
+EMBED_MODEL_NAME = os.environ.get(
+    "KILN_STYLE_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+)
+DESCRIPTOR_AXES = (
+    "formality",
+    "verbosity",
+    "warmth",
+    "hedging",
+    "humor",
+    "directness",
+)
+
 
 # A tiny background corpus of "generic / corporate / templated" English
 # — used as the negative side of the TF-IDF distinctiveness comparison.
@@ -61,6 +81,18 @@ class StyleDescriptors:
     humor: float
     directness: float
 
+    @classmethod
+    def from_array(cls, arr) -> "StyleDescriptors":
+        clipped = [float(max(0.0, min(1.0, v))) for v in arr]
+        return cls(
+            formality=round(clipped[0], 2),
+            verbosity=round(clipped[1], 2),
+            warmth=round(clipped[2], 2),
+            hedging=round(clipped[3], 2),
+            humor=round(clipped[4], 2),
+            directness=round(clipped[5], 2),
+        )
+
 
 @dataclass(frozen=True)
 class StyleProfile:
@@ -75,6 +107,10 @@ class StyleProfile:
             "style_card_md": self.style_card_md,
         }
 
+
+# ---------------------------------------------------------------------------
+# Heuristic descriptor fallback (used when the trained artifact is absent)
+# ---------------------------------------------------------------------------
 
 _SENT_RE = re.compile(r"[.!?]+\s+|\n+")
 _WORD_RE = re.compile(r"\b\w+\b")
@@ -92,7 +128,6 @@ _WARM_RE = re.compile(
     re.IGNORECASE,
 )
 _HUMOR_RE = re.compile(r"(?:😂|😅|🤣|lol|haha|hehe|jk|kidding|hilarious|absurd)", re.IGNORECASE)
-_DIRECT_RE = re.compile(r"^[A-Z][^.!?]{0,40}[.!?]")  # short declarative leading sentence
 _FIRST_PERSON_RE = re.compile(r"\b(I|me|my|we|us|our)\b")
 _SECOND_PERSON_RE = re.compile(r"\b(you|your)\b")
 
@@ -145,7 +180,7 @@ def _directness(text: str) -> float:
     return max(0.0, min(1.0, 0.6 * short_clauses + fp_density * 6))
 
 
-def _descriptors(text: str) -> StyleDescriptors:
+def _descriptors_heuristic(text: str) -> StyleDescriptors:
     return StyleDescriptors(
         formality=round(_formality(text), 2),
         verbosity=round(_verbosity(text), 2),
@@ -156,18 +191,162 @@ def _descriptors(text: str) -> StyleDescriptors:
     )
 
 
-def _distinctive_ngrams(corpus: list[str], top_k: int = 5) -> list[str]:
-    """TF-IDF the user corpus against the inline background and return
-    the top-K n-grams (1-3) by score-difference.
+# Backwards-compat alias for tests still importing the underscore form.
+_descriptors = _descriptors_heuristic
 
-    Falls back to the most-frequent user-corpus n-grams if the
-    background TF-IDF cannot be fit (e.g., empty or near-empty corpus)."""
+
+# ---------------------------------------------------------------------------
+# Real distilled regressor
+# ---------------------------------------------------------------------------
+
+
+def _embedder_module():
+    from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+
+    return SentenceTransformer
+
+
+_EMBEDDER_CACHE: dict[str, object] = {}
+
+
+def _embedder(model_name: str = EMBED_MODEL_NAME):
+    cached = _EMBEDDER_CACHE.get(model_name)
+    if cached is not None:
+        return cached
+    SentenceTransformer = _embedder_module()
+    model = SentenceTransformer(model_name)
+    _EMBEDDER_CACHE[model_name] = model
+    return model
+
+
+def load_profiles(path: str | Path) -> list[dict]:
+    """Read a style-with-inputs.jsonl row sequence."""
+    rows: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if "text" in obj and "style_descriptors" in obj:
+                rows.append(obj)
+    return rows
+
+
+def train(
+    profiles_path: str | Path,
+    *,
+    artifact_path: str | Path,
+    test_size: float = 0.2,
+    embed_model: str = EMBED_MODEL_NAME,
+    alpha: float = 1.0,
+) -> dict:
+    """Train and save the style regressor.
+
+    Multi-output Ridge over the 6 axes. Returns held-out per-axis MAE
+    plus overall mean MAE."""
+    rows = load_profiles(profiles_path)
+    rng = np.random.default_rng(RANDOM_STATE)
+    indices = np.arange(len(rows))
+    rng.shuffle(indices)
+    split = int(len(rows) * (1 - test_size))
+    train_rows = [rows[i] for i in indices[:split]]
+    test_rows = [rows[i] for i in indices[split:]]
+
+    embedder = _embedder(embed_model)
+
+    def _embed(rs: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+        texts = [r["text"] for r in rs]
+        emb = np.array(embedder.encode(texts, normalize_embeddings=True, batch_size=32))
+        targets = np.array(
+            [[r["style_descriptors"][a] for a in DESCRIPTOR_AXES] for r in rs],
+            dtype=float,
+        )
+        return emb, targets
+
+    train_X, train_y = _embed(train_rows)
+    test_X, test_y = _embed(test_rows)
+
+    clf = MultiOutputRegressor(Ridge(alpha=alpha, random_state=RANDOM_STATE))
+    clf.fit(train_X, train_y)
+
+    train_pred = clf.predict(train_X)
+    test_pred = clf.predict(test_X)
+    train_mae_per_axis = np.mean(np.abs(train_pred - train_y), axis=0)
+    test_mae_per_axis = np.mean(np.abs(test_pred - test_y), axis=0)
+
+    artifact_path = Path(artifact_path)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(artifact_path, "wb") as fh:
+        pickle.dump(
+            {
+                "version": 1,
+                "embed_model": embed_model,
+                "regressor": clf,
+                "axes": list(DESCRIPTOR_AXES),
+                "n_train": len(train_rows),
+                "n_test": len(test_rows),
+                "train_mae_per_axis": [float(v) for v in train_mae_per_axis],
+                "test_mae_per_axis": [float(v) for v in test_mae_per_axis],
+                "test_mae_mean": float(np.mean(test_mae_per_axis)),
+            },
+            fh,
+        )
+
+    return {
+        "n_train": len(train_rows),
+        "n_test": len(test_rows),
+        "test_mae_per_axis": {
+            axis: float(test_mae_per_axis[i]) for i, axis in enumerate(DESCRIPTOR_AXES)
+        },
+        "test_mae_mean": float(np.mean(test_mae_per_axis)),
+        "train_mae_mean": float(np.mean(train_mae_per_axis)),
+        "artifact_path": str(artifact_path),
+    }
+
+
+_REGRESSOR_CACHE: dict[str, dict] = {}
+
+
+def _load_regressor(artifact_path: str | Path) -> dict:
+    key = str(Path(artifact_path).resolve())
+    cached = _REGRESSOR_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with open(artifact_path, "rb") as fh:
+        payload = pickle.load(fh)
+    _REGRESSOR_CACHE[key] = payload
+    return payload
+
+
+def reset_cache() -> None:
+    _EMBEDDER_CACHE.clear()
+    _REGRESSOR_CACHE.clear()
+
+
+def descriptors_trained(text: str, *, artifact_path: str | Path) -> StyleDescriptors:
+    """Real-regressor descriptors. Falls back to the heuristic if the
+    artifact is missing — keeps the runtime crash-free in fresh checkouts."""
+    try:
+        payload = _load_regressor(artifact_path)
+    except (FileNotFoundError, OSError):
+        return _descriptors_heuristic(text)
+    embedder = _embedder(payload["embed_model"])
+    emb = np.array(embedder.encode([text], normalize_embeddings=True))
+    pred = payload["regressor"].predict(emb)[0]
+    return StyleDescriptors.from_array(pred)
+
+
+# ---------------------------------------------------------------------------
+# Distinctive-ngram extractor (deterministic, no training)
+# ---------------------------------------------------------------------------
+
+
+def _distinctive_ngrams(corpus: list[str], top_k: int = 5) -> list[str]:
     if not corpus:
         return []
-
     user_doc = "\n".join(corpus)
     docs = [user_doc, *_BACKGROUND_CORPUS]
-
     try:
         vec = TfidfVectorizer(
             analyzer="word",
@@ -206,14 +385,6 @@ def _distinctive_ngrams(corpus: list[str], top_k: int = 5) -> list[str]:
 
 
 def _markdown_card(d: StyleDescriptors, ngrams: list[str]) -> str:
-    """Deterministic template fill from descriptors + n-grams.
-
-    Mirrors the shape of ``style_card_md`` in the recovered Opus
-    profiles. Two sections — Voice (one-line summary keyed off the
-    descriptors) and Tells (the distinctive n-grams). The summary
-    sentence is composed from the strongest two descriptors so the
-    output stays varied across corpora without needing a generative
-    model."""
     pairs = sorted(
         (
             ("formal" if d.formality >= 0.55 else "informal", d.formality if d.formality >= 0.55 else 1 - d.formality),
@@ -233,15 +404,21 @@ def _markdown_card(d: StyleDescriptors, ngrams: list[str]) -> str:
     return f"## Voice\n- {voice_line}.\n\n## Tells\n{tells_lines}"
 
 
-def extract(corpus: Iterable[str], *, top_k_ngrams: int = 5) -> StyleProfile:
-    """Compute a style profile for a corpus.
-
-    Accepts an iterable of chunks. Computes descriptors on the joined
-    corpus (so cadence features stabilize across chunk boundaries) and
-    n-grams against the inline background corpus."""
+def extract(
+    corpus: Iterable[str],
+    *,
+    top_k_ngrams: int = 5,
+    artifact_path: str | Path | None = None,
+) -> StyleProfile:
+    """Compute a style profile for a corpus. ``artifact_path`` is
+    optional — when supplied, the trained regressor produces the
+    descriptors; otherwise the heuristic does."""
     chunks = [c for c in corpus if c and c.strip()]
     joined = "\n\n".join(chunks)
-    descriptors = _descriptors(joined)
+    if artifact_path is not None:
+        descriptors = descriptors_trained(joined, artifact_path=artifact_path)
+    else:
+        descriptors = _descriptors_heuristic(joined)
     ngrams = _distinctive_ngrams(chunks, top_k=top_k_ngrams)
     md = _markdown_card(descriptors, ngrams)
     return StyleProfile(
