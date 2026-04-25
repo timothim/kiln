@@ -155,6 +155,12 @@ def _dry_run_curate(corpus: list[dict]) -> tuple[list[dict], dict]:
             "broken_or_encoding": 0,
             "other": 0,
         },
+        # PR #22 review-screen contract: the per-sample decisions are
+        # persisted alongside the rollup so the Swift consumer can render
+        # the accept/reject UI without needing a second file. Embedded
+        # rather than written separately to keep the report.json a single
+        # self-contained artifact.
+        "decisions": decisions,
         "aborted": False,
         "dry_run": True,
     }

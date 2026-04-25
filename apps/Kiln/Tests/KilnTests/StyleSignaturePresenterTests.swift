@@ -58,7 +58,7 @@ final class StyleSignaturePresenterTests: XCTestCase {
     }
 
     func test_register_falls_back_to_poetic_for_neutral_corpus() {
-        let profile = makeProfile(formality: 0.3, warmth: 0.1, humor: 0.05, hedging: 0.1)
+        let profile = makeProfile(formality: 0.3, warmth: 0.1, hedging: 0.1, humor: 0.05)
         let sig = StyleSignaturePresenter.makeSignature(from: profile, userLabel: "Pat")
         XCTAssertEqual(sig.register, .poetic)
     }
