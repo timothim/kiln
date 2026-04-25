@@ -100,6 +100,22 @@ enum Kiln {
         )
     }
 
+    /// Opacity values for ad-hoc fills the system has organically standardized
+    /// on. `cardFill` is the quiet 4% wash used under sample cards, voice
+    /// chips, info pills, and panel surfaces — not loud enough to compete
+    /// with content. `codeFill` is the slightly louder 6% wash used under
+    /// mono text (terminal hand-off line, import command block, code badges)
+    /// where the box itself needs to read as a "block." Both pair with
+    /// `Color.primary` so they adapt to dark mode automatically.
+    ///
+    /// DESIGN.md doesn't sanction these as named tokens yet — flagged in
+    /// `docs/audits/saturday-ui-audit.md` as a candidate. Until the patch
+    /// lands, the source of truth is here.
+    enum Opacity {
+        static let cardFill: Double = 0.04
+        static let codeFill: Double = 0.06
+    }
+
     enum Layout {
         static let minWindowWidth:  CGFloat = 900
         static let minWindowHeight: CGFloat = 560

@@ -212,7 +212,7 @@ private struct NearestSampleRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)
@@ -259,7 +259,7 @@ private struct TermChipRow: View {
                     .padding(.horizontal, Kiln.Space.xxs)
                     .padding(.vertical, 2)
                     .background {
-                        Capsule().fill(Color.primary.opacity(0.06))
+                        Capsule().fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     }
             }
         }
@@ -275,7 +275,7 @@ private struct InspectorLoadingRows: View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     .frame(height: 64)
                     .opacity(pulse ? 1.0 : 0.55)
             }

@@ -182,7 +182,7 @@ private struct StyleSignatureSkeletonCard: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.modal, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                .stroke(Color.primary.opacity(Kiln.Opacity.codeFill), lineWidth: 1)
         }
         .opacity(pulse ? 1.0 : 0.55)
         .onAppear {
@@ -213,7 +213,7 @@ private struct StyleSignatureSkeletonCard: View {
             FlowLayout(spacing: Kiln.Space.xs) {
                 ForEach(chipWidths.indices, id: \.self) { i in
                     Capsule()
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                         .frame(width: chipWidths[i], height: 20)
                 }
             }
@@ -356,7 +356,7 @@ private struct SignaturePhraseCloud: View {
                     .padding(.horizontal, Kiln.Space.xs)
                     .padding(.vertical, Kiln.Space.xxs)
                     .background {
-                        Capsule().fill(Color.primary.opacity(0.06))
+                        Capsule().fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                     }
             }
         }

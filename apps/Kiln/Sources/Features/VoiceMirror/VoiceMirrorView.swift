@@ -92,7 +92,7 @@ struct VoiceMirrorView: View {
                 .padding(.vertical, Kiln.Space.xs)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
+                        .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
                 }
                 .accessibilityLabel("Voice mirror prompt")
 
@@ -187,7 +187,7 @@ private struct VoiceMirrorColumn: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
         .overlay {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)

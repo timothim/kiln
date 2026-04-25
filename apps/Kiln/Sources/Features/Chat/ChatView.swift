@@ -91,7 +91,7 @@ struct ChatView: View {
                 .padding(.vertical, Kiln.Space.xs)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
+                        .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
                 }
                 .accessibilityLabel("Message composer")
 

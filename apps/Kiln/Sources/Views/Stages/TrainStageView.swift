@@ -412,7 +412,7 @@ private struct TrainingCompletedView: View {
                 .padding(.vertical, Kiln.Space.xs)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                 }
         }
         .padding(Kiln.Space.m)

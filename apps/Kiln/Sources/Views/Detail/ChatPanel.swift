@@ -47,7 +47,7 @@ struct ChatPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
+                .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
         }
     }
 

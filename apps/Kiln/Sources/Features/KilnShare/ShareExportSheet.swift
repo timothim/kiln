@@ -96,7 +96,7 @@ struct ShareExportSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 
@@ -166,7 +166,7 @@ struct ShareExportSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
             }
             importInstructionsBlock(filename: result.filename)
         }
@@ -201,7 +201,7 @@ struct ShareExportSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
                 }
         }
     }

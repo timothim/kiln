@@ -144,7 +144,7 @@ struct CompleteStageView: View {
         .padding(.vertical, Kiln.Space.xs)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
+                .fill(Color.primary.opacity(Kiln.Opacity.codeFill))
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Terminal command: ollama run kiln dash \(project.slug)")
