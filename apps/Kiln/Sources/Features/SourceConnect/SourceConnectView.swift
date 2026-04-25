@@ -240,19 +240,7 @@ struct SourceConnectView: View {
                 .foregroundStyle(.tertiary)
             VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 ForEach(model.log) { entry in
-                    HStack(alignment: .top, spacing: Kiln.Space.xs) {
-                        Image(systemName: systemImage(for: entry.kind))
-                            .font(.system(size: Kiln.Icon.small - 2, weight: .medium))
-                            .foregroundStyle(color(for: entry.kind))
-                            .accessibilityHidden(true)
-                            .frame(width: Kiln.Icon.small, alignment: .leading)
-                        Text(entry.text)
-                            .font(Kiln.Font.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(accessibilityRole(for: entry.kind)): \(entry.text)")
+                    LogEntryRow(entry: entry)
                 }
                 if model.log.isEmpty {
                     Text("Start ingestion to watch the agent reason in real time.")
@@ -271,11 +259,105 @@ struct SourceConnectView: View {
             .accessibilityAddTraits(.updatesFrequently)
         }
     }
+}
 
-    /// SF Symbols replace the previous emoji glyphs (DESIGN.md "no emoji").
-    /// Sized at `Kiln.Icon.small - 2` so the symbol weight matches the
-    /// surrounding caption font visually.
-    private func systemImage(for kind: SourceConnectModel.LogEntry.Kind) -> String {
+// MARK: - Hierarchical log row
+
+/// Renders a single agent log entry with visual hierarchy: orchestrator
+/// thoughts (`thinking` / `decision` / `completion` / `error`) sit flush
+/// left; sub-agent activity (`spawn` / `sample`) indents under the
+/// preceding orchestrator decision and carries a thin vertical connector
+/// line that animates in from the top.
+///
+/// Each newly-appearing row plays a brief background highlight that
+/// fades over 800ms, drawing the eye to the freshest line without
+/// turning the whole log into a flickering surface.
+private struct LogEntryRow: View {
+    let entry: SourceConnectModel.LogEntry
+
+    @State private var hasAppeared = false
+    @State private var connectorRevealed = false
+    @State private var highlightOpacity: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Sub-agent activity is rendered indented; orchestrator thoughts /
+    /// decisions / completions / errors sit at the top level.
+    private var isSubAgentEntry: Bool {
+        entry.kind == .spawn || entry.kind == .sample
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            if isSubAgentEntry {
+                connector
+                    .padding(.leading, Kiln.Space.sm)
+                    .padding(.trailing, Kiln.Space.xs)
+            }
+            HStack(alignment: .top, spacing: Kiln.Space.xs) {
+                Image(systemName: Self.systemImage(for: entry.kind))
+                    .font(.system(size: Kiln.Icon.small - 2, weight: .medium))
+                    .foregroundStyle(Self.color(for: entry.kind))
+                    .accessibilityHidden(true)
+                    .frame(width: Kiln.Icon.small, alignment: .leading)
+                Text(entry.text)
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.sm, style: .continuous)
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill * highlightOpacity))
+        }
+        .opacity(hasAppeared ? 1 : 0)
+        .offset(y: hasAppeared ? 0 : -4)
+        .onAppear {
+            triggerEntrance()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(Self.accessibilityRole(for: entry.kind)): \(entry.text)")
+    }
+
+    /// Hairline vertical line on the leading edge of sub-agent rows.
+    /// Grows from the top via `scaleEffect(y:anchor:.top)` over
+    /// `Kiln.Motion.connectorGrow`; static under Reduce Motion.
+    private var connector: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.35))
+            .frame(width: 1)
+            .scaleEffect(y: connectorRevealed ? 1 : 0, anchor: .top)
+    }
+
+    private func triggerEntrance() {
+        guard !hasAppeared else { return }
+        guard !reduceMotion else {
+            hasAppeared = true
+            connectorRevealed = true
+            return
+        }
+
+        // Connector starts drawing first, then the row fades in over the
+        // top of it (so the line appears to be "ready" for the row).
+        withAnimation(Kiln.Motion.connectorGrow) {
+            connectorRevealed = true
+        }
+        withAnimation(Kiln.Motion.staggerStep) {
+            hasAppeared = true
+        }
+
+        // 800ms recency highlight that fades out — eases the eye onto
+        // the new line without turning the whole log into flicker.
+        highlightOpacity = 1
+        withAnimation(.easeOut(duration: 0.8)) {
+            highlightOpacity = 0
+        }
+    }
+
+    // MARK: - Glyph + role lookup tables
+
+    static func systemImage(for kind: SourceConnectModel.LogEntry.Kind) -> String {
         switch kind {
         case .thinking:   return "brain"
         case .spawn:      return "arrow.right.circle"
@@ -286,7 +368,7 @@ struct SourceConnectView: View {
         }
     }
 
-    private func color(for kind: SourceConnectModel.LogEntry.Kind) -> Color {
+    static func color(for kind: SourceConnectModel.LogEntry.Kind) -> Color {
         switch kind {
         case .error:      return Kiln.Palette.danger
         case .completion: return .green
@@ -295,10 +377,7 @@ struct SourceConnectView: View {
         }
     }
 
-    /// VoiceOver phrase that prefixes the entry text. Without it, "1,240
-    /// returned 8 samples" sounds like a number sentence; the role gives
-    /// blind users the structural cue sighted users get from the symbol.
-    private func accessibilityRole(for kind: SourceConnectModel.LogEntry.Kind) -> String {
+    static func accessibilityRole(for kind: SourceConnectModel.LogEntry.Kind) -> String {
         switch kind {
         case .thinking:   return "Thinking"
         case .spawn:      return "Sub-agent"
