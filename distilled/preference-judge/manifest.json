@@ -1,0 +1,38 @@
+{
+  "component": "preference-judge",
+  "version": 1,
+  "generated_at": "2026-04-25T20:06:57Z",
+  "git_sha": "e0e060179a5945fc07b39ca295469c58ba57e018",
+  "teacher": {
+    "model_id": "claude-opus-4-7",
+    "labeling_run": "managed-agents/preference-judge/runs"
+  },
+  "artifact": {
+    "path": "packages/kiln_trainer/artifacts/preference-classifier.pkl",
+    "format": "sklearn-pickle",
+    "sha256": "0803b967c06a6217ca23b87af7947ec97a2e1108a4b63128d96861d1552a7594",
+    "size_bytes": 13243
+  },
+  "training": {
+    "label_count": 2000,
+    "n_train": 1600,
+    "n_test": 400,
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "feature_dim": 1536,
+    "winner_distribution": {
+      "A": 1024,
+      "B": 976,
+      "tie": 0
+    }
+  },
+  "metrics": {
+    "train_accuracy": 1.0,
+    "test_accuracy": 0.9975,
+    "tie_band": 0.05
+  },
+  "ship_bar": {
+    "test_accuracy_floor": 0.8,
+    "test_accuracy_met": true
+  },
+  "notes": "Held-out accuracy bar (\u2265 0.90) enforced in test_preference_trained.py; training-time pickle records both train + test accuracy. Zero ties is a known design artifact (Opus rubric forces a winner)."
+}

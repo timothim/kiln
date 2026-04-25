@@ -1,0 +1,54 @@
+{
+  "component": "style-extractor",
+  "version": 1,
+  "generated_at": "2026-04-25T20:06:57Z",
+  "git_sha": "e0e060179a5945fc07b39ca295469c58ba57e018",
+  "teacher": {
+    "model_id": "claude-opus-4-7",
+    "labeling_run": "managed-agents/style-extractor/runs"
+  },
+  "artifact": {
+    "path": "packages/kiln_trainer/artifacts/style-regressor.pkl",
+    "format": "sklearn-pickle",
+    "sha256": "f994dbd3a2663b659c45fba181749f180ca492c3b01d9c4d5c84939905cedb4f",
+    "size_bytes": 10795
+  },
+  "training": {
+    "label_count": 1500,
+    "n_train": 1200,
+    "n_test": 300,
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "axes": [
+      "formality",
+      "verbosity",
+      "warmth",
+      "hedging",
+      "humor",
+      "directness"
+    ]
+  },
+  "metrics": {
+    "test_mae_mean": 0.03733272045718299,
+    "test_mae_per_axis": {
+      "formality": 0.0415397717277209,
+      "verbosity": 0.025881752371788018,
+      "warmth": 0.04330003125965599,
+      "hedging": 0.04132985040545465,
+      "humor": 0.0363052402685086,
+      "directness": 0.03563967670996982
+    },
+    "train_mae_per_axis": {
+      "formality": 0.03494242337544764,
+      "verbosity": 0.023393349414070484,
+      "warmth": 0.03639397716894744,
+      "hedging": 0.03808976342777404,
+      "humor": 0.029530209464331467,
+      "directness": 0.030788799320658033
+    }
+  },
+  "ship_bar": {
+    "test_mae_ceiling": 0.1,
+    "test_mae_met": true
+  },
+  "notes": "Multi-output Ridge over 6 style axes. Mean MAE \u2264 0.10 is the ship bar; current 0.037 is well under. Per-axis breakdown lives in metrics."
+}
