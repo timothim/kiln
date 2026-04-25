@@ -25,6 +25,13 @@ dependencies = [
     # (all-MiniLM-L6-v2, ~80 MB) is downloaded once on first use and
     # cached under ~/.cache/huggingface; no API calls at runtime.
     "sentence-transformers>=2.7,<6",
+    # Saturday final push — Voice Coach / Training Advisor /
+    # MCP-powered ingestion / Deep Curation. All cloud features are
+    # opt-in; the SDK is a runtime dependency only when the user has
+    # flipped the corresponding toggle in Settings.
+    "anthropic>=0.40,<2",
+    # Phase 2 MCP server + Phase 3 MCP readers. Same opt-in story.
+    "mcp>=1.0,<2",
 ]
 
 [build-system]
