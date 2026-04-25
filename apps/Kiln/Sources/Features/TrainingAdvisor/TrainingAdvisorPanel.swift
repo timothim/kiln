@@ -49,7 +49,7 @@ struct TrainingAdvisorPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 }
@@ -78,7 +78,7 @@ struct TrainingAdvisorInlinePanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 }
@@ -122,7 +122,7 @@ private func advisorContent(observations: [AdvisorObservationRow], isWatching: B
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
     } else {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
             ForEach(Array(observations.suffix(8).enumerated()), id: \.offset) { _, obs in
                 HStack(alignment: .top, spacing: Kiln.Space.xs) {
                     Text("iter \(obs.iter)")

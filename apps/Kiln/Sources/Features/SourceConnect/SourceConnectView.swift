@@ -238,21 +238,24 @@ struct SourceConnectView: View {
                 .kerning(0.44)
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 ForEach(model.log) { entry in
                     HStack(alignment: .top, spacing: Kiln.Space.xs) {
-                        Text(symbol(for: entry.kind))
-                            .font(Kiln.Font.label)
+                        Image(systemName: systemImage(for: entry.kind))
+                            .font(.system(size: Kiln.Icon.small - 2, weight: .medium))
                             .foregroundStyle(color(for: entry.kind))
                             .accessibilityHidden(true)
+                            .frame(width: Kiln.Icon.small, alignment: .leading)
                         Text(entry.text)
                             .font(Kiln.Font.caption)
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(accessibilityRole(for: entry.kind)): \(entry.text)")
                 }
                 if model.log.isEmpty {
-                    Text("(empty — start ingestion to see live updates)")
+                    Text("Start ingestion to watch the agent reason in real time.")
                         .font(Kiln.Font.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -261,27 +264,48 @@ struct SourceConnectView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Live agent log")
+            .accessibilityAddTraits(.updatesFrequently)
         }
     }
 
-    private func symbol(for kind: SourceConnectModel.LogEntry.Kind) -> String {
+    /// SF Symbols replace the previous emoji glyphs (DESIGN.md "no emoji").
+    /// Sized at `Kiln.Icon.small - 2` so the symbol weight matches the
+    /// surrounding caption font visually.
+    private func systemImage(for kind: SourceConnectModel.LogEntry.Kind) -> String {
         switch kind {
-        case .thinking: return "🤔"
-        case .spawn:    return "▶"
-        case .sample:   return "•"
-        case .decision: return "✓"
-        case .completion: return "✔︎"
-        case .error:    return "⚠"
+        case .thinking:   return "brain"
+        case .spawn:      return "arrow.right.circle"
+        case .sample:     return "doc.text"
+        case .decision:   return "checkmark.circle"
+        case .completion: return "checkmark.seal.fill"
+        case .error:      return "exclamationmark.triangle"
         }
     }
 
     private func color(for kind: SourceConnectModel.LogEntry.Kind) -> Color {
         switch kind {
-        case .error: return .red
+        case .error:      return Kiln.Palette.danger
         case .completion: return .green
-        default: return .secondary
+        case .thinking:   return .purple
+        default:          return .secondary
+        }
+    }
+
+    /// VoiceOver phrase that prefixes the entry text. Without it, "1,240
+    /// returned 8 samples" sounds like a number sentence; the role gives
+    /// blind users the structural cue sighted users get from the symbol.
+    private func accessibilityRole(for kind: SourceConnectModel.LogEntry.Kind) -> String {
+        switch kind {
+        case .thinking:   return "Thinking"
+        case .spawn:      return "Sub-agent"
+        case .sample:     return "Sample"
+        case .decision:   return "Decision"
+        case .completion: return "Completed"
+        case .error:      return "Error"
         }
     }
 }

@@ -453,7 +453,7 @@ struct DeepCurationView: View {
                     .padding(Kiln.Space.sm)
                     .background {
                         RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                            .fill(Color.primary.opacity(0.04))
+                            .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
                     }
                 }
 
@@ -471,9 +471,11 @@ struct DeepCurationView: View {
                             .padding(.vertical, Kiln.Space.xs)
                             .background {
                                 RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
+                                    // Disabled state stays in the Kiln palette — `Color.gray`
+                                    // drifts cool/warm in dark mode (audit H2).
                                     .fill(review.pendingRemovalCount > 0
                                           ? Kiln.Palette.firing
-                                          : Color.gray.opacity(0.4))
+                                          : Color.primary.opacity(Kiln.Opacity.trackFill))
                             }
                     }
                     .buttonStyle(.plain)
@@ -491,8 +493,11 @@ struct DeepCurationView: View {
             HStack(alignment: .top, spacing: Kiln.Space.xs) {
                 Button(action: onToggle) {
                     Image(systemName: decision.userAccepted ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(decision.userAccepted ? Kiln.Palette.firing : Color.secondary)
-                        .font(.system(size: 16))
+                        // System green is the macOS-native accept semantic —
+                        // DESIGN.md forbids `firing` on checkmarks (see audit B2).
+                        .foregroundStyle(decision.userAccepted ? .green : Color.secondary)
+                        .font(.system(size: Kiln.Icon.small + 2, weight: .medium))
+                        .animation(Kiln.Motion.microToggle, value: decision.userAccepted)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(decision.userAccepted ? "Accept removal" : "Skip removal")
@@ -528,17 +533,26 @@ struct DeepCurationView: View {
                 .kerning(0.44)
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 if model.thinkingLog.isEmpty {
-                    Text("(empty — start curation to see live updates)")
+                    Text("Start Deep Curation to watch Opus reason about each sample.")
                         .font(Kiln.Font.caption)
                         .foregroundStyle(.tertiary)
                 } else {
                     ForEach(Array(model.thinkingLog.enumerated()), id: \.offset) { _, entry in
-                        Text("🤔 \(entry)")
-                            .font(Kiln.Font.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .top, spacing: Kiln.Space.xs) {
+                            Image(systemName: "brain")
+                                .font(.system(size: Kiln.Icon.small - 2, weight: .medium))
+                                .foregroundStyle(.purple)
+                                .accessibilityHidden(true)
+                                .frame(width: Kiln.Icon.small, alignment: .leading)
+                            Text(entry)
+                                .font(Kiln.Font.caption)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Thinking: \(entry)")
                     }
                 }
             }
@@ -546,8 +560,11 @@ struct DeepCurationView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Live agent reasoning")
+            .accessibilityAddTraits(.updatesFrequently)
         }
     }
 }

@@ -202,7 +202,7 @@ struct BehindTheScenesView: View {
                 Text("\(number).")
                     .font(Kiln.Font.title)
                     .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                     Text(title).font(Kiln.Font.title)
                     Text(subtitle).font(Kiln.Font.caption).foregroundStyle(.secondary)
                 }
@@ -250,12 +250,12 @@ struct BehindTheScenesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
         }
     }
 
     private func runtimeRow(title: String, description: String, settingsPath: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
             Text(title).font(Kiln.Font.body.weight(.semibold))
             Text(description).font(Kiln.Font.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text(settingsPath).font(Kiln.Font.label).kerning(0.44).textCase(.uppercase).foregroundStyle(.tertiary)
