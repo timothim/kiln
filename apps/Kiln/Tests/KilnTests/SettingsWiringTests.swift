@@ -77,4 +77,68 @@ final class SettingsWiringTests: XCTestCase {
         )
         _ = BehindTheScenesView()
     }
+
+    // MARK: - Audit C2 regression: Voice Coach open / close lifecycle
+
+    func test_openVoiceCoach_constructs_model_and_input_from_training_report() {
+        let app = AppModel()
+        let adapterURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kiln-c2-test-adapter.safetensors")
+        FileManager.default.createFile(atPath: adapterURL.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: adapterURL) }
+
+        var project = Project(name: "VC test", stage: .complete)
+        project.trainingReport = TrainingReport(
+            adapterURL: adapterURL,
+            itersCompleted: 200,
+            totalIters: 200,
+            finalLoss: 1.234,
+            finalValLoss: 1.567,
+            wallClockSec: 312.5,
+            interrupted: false,
+            partialCheckpoint: false
+        )
+        app.projects = [project]
+        XCTAssertNil(app.voiceCoachModel)
+
+        app.openVoiceCoach(for: project.id)
+        XCTAssertNotNil(app.voiceCoachModel, "openVoiceCoach must populate voiceCoachModel")
+        XCTAssertNotNil(app.voiceCoachInput)
+        // Snapshot carries fields we sliced from the training report.
+        XCTAssertEqual(app.voiceCoachInput?.styleSignature["voice_name"], .string("VC test"))
+        XCTAssertEqual(app.voiceCoachInput?.styleSignature["iters_completed"], .number(200))
+        XCTAssertEqual(app.voiceCoachInput?.styleSignature["final_train_loss"], .number(1.234))
+    }
+
+    func test_openVoiceCoach_is_noop_without_training_report() {
+        let app = AppModel()
+        let project = Project(name: "No-report", stage: .training)   // no trainingReport
+        app.projects = [project]
+        app.openVoiceCoach(for: project.id)
+        XCTAssertNil(app.voiceCoachModel)
+        XCTAssertNil(app.voiceCoachInput)
+    }
+
+    func test_closeVoiceCoach_clears_state() {
+        let app = AppModel()
+        let adapterURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kiln-c2-close-test.safetensors")
+        FileManager.default.createFile(atPath: adapterURL.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: adapterURL) }
+
+        var project = Project(name: "Close test", stage: .complete)
+        project.trainingReport = TrainingReport(
+            adapterURL: adapterURL,
+            itersCompleted: 1, totalIters: 1,
+            finalLoss: nil, finalValLoss: nil,
+            wallClockSec: 1, interrupted: false, partialCheckpoint: false
+        )
+        app.projects = [project]
+
+        app.openVoiceCoach(for: project.id)
+        XCTAssertNotNil(app.voiceCoachModel)
+        app.closeVoiceCoach()
+        XCTAssertNil(app.voiceCoachModel)
+        XCTAssertNil(app.voiceCoachInput)
+    }
 }

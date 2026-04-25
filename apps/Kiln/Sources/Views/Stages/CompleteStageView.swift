@@ -13,10 +13,25 @@ struct CompleteStageView: View {
     /// Optional Voice Coach surface (Saturday Phase 1). Nil when the
     /// user hasn't enabled the Cloud features section in Settings;
     /// when non-nil, a "Get Voice Report" CTA appears next to the
-    /// Share button.
+    /// Share button. Audit C2: this parameter was historically defaulted
+    /// to nil and StageRouterView never passed it — making the button
+    /// invisible. The router now passes a real closure when the toggle
+    /// is on, plus the model/input the sheet renders.
     var onOpenVoiceCoach: (() -> Void)? = nil
+    var voiceCoachModel: VoiceCoachModel? = nil
+    var voiceCoachInput: VoiceCoachInput? = nil
+    var onCloseVoiceCoach: (() -> Void)? = nil
 
     @State private var isShareSheetPresented = false
+
+    private var voiceCoachIsPresented: Binding<Bool> {
+        Binding(
+            get: { voiceCoachModel != nil },
+            set: { newValue in
+                if !newValue { onCloseVoiceCoach?() }
+            }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.l) {
@@ -53,6 +68,15 @@ struct CompleteStageView: View {
                 },
                 onCancel: { isShareSheetPresented = false }
             )
+        }
+        .sheet(isPresented: voiceCoachIsPresented) {
+            if let model = voiceCoachModel, let input = voiceCoachInput {
+                VoiceCoachSheet(
+                    model: model,
+                    input: input,
+                    onClose: { onCloseVoiceCoach?() }
+                )
+            }
         }
     }
 

@@ -13,6 +13,14 @@ final class AppModel {
     var trainModel: TrainModel?
     var exportModel: ExportModel?
     var chatModel: ChatModel?
+    /// Audit C2: when non-nil, the Voice Coach sheet is presented over
+    /// the Complete stage. Constructed by ``openVoiceCoach(for:)``,
+    /// cleared by ``closeVoiceCoach()``.
+    var voiceCoachModel: VoiceCoachModel?
+    /// The input snapshot for the currently-presented Voice Coach
+    /// session. Lives on AppModel so the sheet doesn't have to
+    /// re-derive it on every render.
+    var voiceCoachInput: VoiceCoachInput?
 
     /// Saved-voice library — drives the sidebar's bottom-pinned selector.
     /// Always non-nil so the selector has something to bind to at launch.
@@ -86,16 +94,19 @@ final class AppModel {
     private let trainingRunnerFactory: (@MainActor () -> TrainingRunner)?
     private let ollamaExporterFactory: (@MainActor () -> OllamaExporter)?
     private let ollamaClientFactory: (@MainActor () -> OllamaClient)?
+    private let voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)?
 
     init(
         trainingRunnerFactory: (@MainActor () -> TrainingRunner)? = nil,
         ollamaExporterFactory: (@MainActor () -> OllamaExporter)? = nil,
         ollamaClientFactory: (@MainActor () -> OllamaClient)? = nil,
+        voiceCoachRunnerFactory: (@MainActor () -> VoiceCoachRunner)? = nil,
         voicesProvider: (any VoicesProvider)? = nil
     ) {
         self.trainingRunnerFactory = trainingRunnerFactory
         self.ollamaExporterFactory = ollamaExporterFactory
         self.ollamaClientFactory = ollamaClientFactory
+        self.voiceCoachRunnerFactory = voiceCoachRunnerFactory
         if let voicesProvider {
             self.voicesModel = VoicesModel(provider: voicesProvider)
         } else {
@@ -286,6 +297,63 @@ final class AppModel {
         chatModel = nil
     }
 
+    // MARK: - Voice Coach (Audit C2)
+
+    /// Open the Voice Coach sheet for the given project. Constructs a
+    /// fresh ``VoiceCoachModel`` + ``VoiceCoachInput`` snapshot tied to
+    /// the project's training report. No-op when the project has no
+    /// training report (Voice Coach surface only renders post-Complete
+    /// anyway).
+    func openVoiceCoach(for projectID: Project.ID) {
+        guard let idx = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let report = projects[idx].trainingReport else { return }
+        let project = projects[idx]
+        let model = VoiceCoachModel(
+            runner: resolveVoiceCoachRunner(),
+            settings: cloudSettings,
+            apiKeyProvider: { [weak self] in
+                // Keychain failures here are non-fatal — the runner
+                // will surface ``missingAPIKey`` to the UI which
+                // already has a "Set up API key in Settings → Cloud
+                // features" CTA.
+                (try? self?.cloudSettings.loadAPIKey()) ?? nil
+            }
+        )
+        voiceCoachInput = Self.makeVoiceCoachInput(for: project, report: report)
+        voiceCoachModel = model
+    }
+
+    func closeVoiceCoach() {
+        voiceCoachModel = nil
+        voiceCoachInput = nil
+    }
+
+    /// Builds the snapshot Opus reads. Uses the training report's
+    /// concrete fields plus the project's user-facing name, so the
+    /// resulting markdown stays specific to *this* voice rather than a
+    /// generic "your voice" fallback. Sample completions stay empty —
+    /// the panel renders a "Try a prompt" CTA in v2 to attach examples.
+    static func makeVoiceCoachInput(
+        for project: Project,
+        report: TrainingReport
+    ) -> VoiceCoachInput {
+        var sig: [String: AnyCodable] = [
+            "voice_name": AnyCodable(project.name),
+            "iters_completed": AnyCodable(Double(report.itersCompleted)),
+        ]
+        if let total = report.totalIters {
+            sig["iters_total"] = AnyCodable(Double(total))
+        }
+        if let loss = report.finalLoss {
+            sig["final_train_loss"] = AnyCodable(loss)
+        }
+        if let valLoss = report.finalValLoss {
+            sig["final_val_loss"] = AnyCodable(valLoss)
+        }
+        sig["wall_clock_seconds"] = AnyCodable(report.wallClockSec)
+        return VoiceCoachInput(styleSignature: sig, sampleCompletions: [])
+    }
+
     // MARK: - Helpers
 
     func updateStage(of id: Project.ID, to stage: ProjectStage) {
@@ -317,6 +385,14 @@ final class AppModel {
             return factory()
         }
         return URLSessionOllamaClient()
+    }
+
+    private func resolveVoiceCoachRunner() -> VoiceCoachRunner {
+        if let factory = voiceCoachRunnerFactory {
+            return factory()
+        }
+        let launcher = TrainerLauncher.uvRun(trainerPackageDir: Self.trainerPackageDir())
+        return SubprocessVoiceCoachRunner(launcher: launcher)
     }
 
     /// Best-effort resolver for a llama.cpp checkout. Respects the

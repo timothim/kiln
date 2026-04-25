@@ -80,7 +80,13 @@ struct StageRouterView: View {
                 project: project,
                 chatModel: model.chatModel,
                 onOpenChat: { model.openChat(for: project.id) },
-                onCloseChat: { model.closeChat() }
+                onCloseChat: { model.closeChat() },
+                onOpenVoiceCoach: model.cloudSettings.voiceCoachEnabled
+                    ? { model.openVoiceCoach(for: project.id) }
+                    : nil,
+                voiceCoachModel: model.voiceCoachModel,
+                voiceCoachInput: model.voiceCoachInput,
+                onCloseVoiceCoach: { model.closeVoiceCoach() }
             )
         }
     }
