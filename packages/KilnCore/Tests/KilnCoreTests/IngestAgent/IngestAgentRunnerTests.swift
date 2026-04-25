@@ -121,4 +121,49 @@ final class IngestAgentRunnerTests: XCTestCase {
         XCTAssertEqual(req.intent, "personal voice")
         XCTAssertTrue(req.local)
     }
+
+    // MARK: - Cancellation retrofit (Saturday-final, fixup/saturday-cancellation)
+
+    func test_runner_terminates_subprocess_on_stream_break() async throws {
+        // Spawn a fake agent that emits the ready line then sleeps 30 s.
+        // Break out of the for-await loop early; the
+        // continuation.onTermination handler must SIGTERM (and escalate
+        // to SIGKILL) so the subprocess doesn't outlive the test.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiln-agent-cancel-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("fake-slow-agent.sh")
+        let body = """
+        #!/bin/bash
+        echo '{"event":"ready","version":"0.1.0","mlx":"0.22.1"}'
+        echo '{"event":"agent_thinking","content":"first thought"}'
+        sleep 30
+        """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: script.path
+        )
+        let launcher = TrainerLauncher(
+            executableURL: script, argumentPrefix: [],
+            workingDirectory: dir, environment: nil
+        )
+        let runner = SubprocessIngestAgentRunner(launcher: launcher)
+        let out = dir.appendingPathComponent("corpus.jsonl")
+
+        let start = Date()
+        var first: IngestAgentEvent? = nil
+        let stream = runner.runStreaming(request: sampleRequest(out: out))
+        for try await event in stream {
+            first = event
+            break // signals the stream that consumption is over
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertNotNil(first, "expected at least one event before break")
+        XCTAssertLessThan(
+            elapsed, 4.0,
+            "ingest-agent runner did not honour stream cancellation; took \(elapsed) s"
+        )
+    }
 }

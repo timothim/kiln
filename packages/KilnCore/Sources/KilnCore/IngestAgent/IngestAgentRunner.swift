@@ -170,9 +170,21 @@ public final class SubprocessIngestAgentRunner: IngestAgentRunner, @unchecked Se
             }
 
             continuation.onTermination = { @Sendable _ in
+                // Saturday-final cancellation retrofit: SIGTERM, give the
+                // child a 5 s grace window, then SIGKILL if still alive.
+                // Mirrors the OllamaExporter pattern. Without the
+                // escalation, an agent loop that's mid-Anthropic-API-call
+                // could hang for the full HTTP timeout (~60 s) instead of
+                // exiting promptly when the user cancels.
                 producer.cancel()
                 if process.isRunning {
                     process.terminate()
+                    let deadline = DispatchTime.now() + .seconds(5)
+                    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline) {
+                        if process.isRunning {
+                            kill(process.processIdentifier, SIGKILL)
+                        }
+                    }
                 }
             }
 
