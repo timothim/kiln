@@ -72,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_voice_coach_parser(sub)
     _build_mcp_serve_parser(sub)
     _build_curate_agent_parser(sub)
+    _build_ingest_via_agent_parser(sub)
 
     return parser
 
@@ -417,6 +418,57 @@ def _build_curate_agent_parser(sub: argparse._SubParsersAction) -> None:
     )
 
 
+def _build_ingest_via_agent_parser(sub: argparse._SubParsersAction) -> None:
+    """``ingest-via-agent`` — Saturday Phase 3.
+
+    Master orchestrator that runs each enabled reader, aggregates,
+    dedups, then either calls Opus 4.7 to filter to the user's
+    intent (cloud) or runs a heuristic keyword filter (local). Writes
+    a clean corpus JSONL ready for the Dataset Doctor."""
+    p = sub.add_parser(
+        "ingest-via-agent",
+        help="agent-orchestrated ingestion across multiple sources",
+        description=(
+            "Run the Phase 3 orchestrator: reads from each source, "
+            "aggregates samples, asks Opus (or local heuristic) to "
+            "filter to the user's intent, writes a clean JSONL."
+        ),
+    )
+    p.add_argument(
+        "--sources",
+        required=True,
+        help="comma-separated source ids (e.g. local_documents,apple_notes)",
+    )
+    p.add_argument(
+        "--intent",
+        default=None,
+        help='free-text user intent (e.g. "personal writing")',
+    )
+    p.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="output corpus JSONL path",
+    )
+    p.add_argument(
+        "--local",
+        action="store_true",
+        help="skip Opus, use heuristic filter (no API call)",
+    )
+    p.add_argument(
+        "--documents-root",
+        type=Path,
+        default=None,
+        help="override the default ~/Documents root for local_documents reader",
+    )
+    p.add_argument(
+        "--per-source-limit",
+        type=int,
+        default=200,
+        help="max samples per source (default 200)",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Install the SIGTERM handler first thing, before anything the parent could
     # conceivably race against. If we waited until inside a subcommand, a
@@ -472,6 +524,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from kiln_trainer.commands import curate_agent as curate_agent_cmd
 
         return curate_agent_cmd.run(args)
+    if args.command == "ingest-via-agent":
+        from kiln_trainer.commands import ingest_via_agent as ingest_via_agent_cmd
+
+        return ingest_via_agent_cmd.run(args)
 
     parser.error(f"unknown command {args.command!r}")
     return 2  # pragma: no cover — parser.error exits before reaching here
