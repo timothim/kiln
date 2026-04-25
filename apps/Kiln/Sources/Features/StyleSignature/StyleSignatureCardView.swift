@@ -186,7 +186,7 @@ private struct StyleSignatureSkeletonCard: View {
         }
         .opacity(pulse ? 1.0 : 0.55)
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+            withAnimation(Kiln.Motion.skeletonPulse) {
                 pulse = true
             }
         }

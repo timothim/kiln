@@ -98,6 +98,26 @@ enum Kiln {
             insertion: .opacity.combined(with: .move(edge: .trailing)),
             removal:   .opacity.combined(with: .move(edge: .leading))
         )
+
+        // --- Semantic variants of `standard`, registered by the
+        // Saturday UI audit so call sites stop reaching for inline
+        // duration literals. Names describe the moment, not the duration.
+
+        /// Pin toggles, chip flips, in-place state swaps. Slightly faster
+        /// than `standard` so the surface feels responsive rather than
+        /// "loaded." Used in Voice Mirror's pin/highlight transitions.
+        static let microToggle: Animation = .smooth(duration: 0.2)
+
+        /// New-sample reveal in the Growing Model panel. Slower than
+        /// `standard` so the eye lands on the new card before the rest of
+        /// the layout reflows.
+        static let sampleReveal: Animation = .smooth(duration: 0.6)
+
+        /// Skeleton-card pulse during loading. Matches the cadence of an
+        /// inhale-exhale; slow enough to read as "thinking" rather than
+        /// "spinning."
+        static let skeletonPulse: Animation = .easeInOut(duration: 0.9)
+            .repeatForever(autoreverses: true)
     }
 
     /// Opacity values for ad-hoc fills the system has organically standardized

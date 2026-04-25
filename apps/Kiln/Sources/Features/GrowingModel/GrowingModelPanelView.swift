@@ -164,7 +164,7 @@ private struct GrowingModelPromptCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .contentTransition(.opacity)
-            .animation(.smooth(duration: 0.6), value: sample.currentResponse)
+            .animation(Kiln.Motion.sampleReveal, value: sample.currentResponse)
     }
 
     @ViewBuilder

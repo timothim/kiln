@@ -281,7 +281,7 @@ private struct InspectorLoadingRows: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            withAnimation(Kiln.Motion.skeletonPulse) {
                 pulse = true
             }
         }
