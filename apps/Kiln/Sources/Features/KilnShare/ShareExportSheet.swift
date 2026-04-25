@@ -337,19 +337,6 @@ struct ShareExportSheet: View {
     private enum CopyFeedback: Equatable { case copied }
 }
 
-// MARK: - Shared section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Default — configurable") {

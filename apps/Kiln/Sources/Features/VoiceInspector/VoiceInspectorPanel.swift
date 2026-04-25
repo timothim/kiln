@@ -266,19 +266,6 @@ private struct TermChipRow: View {
     }
 }
 
-// MARK: - Shared section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-    }
-}
-
 // MARK: - Loading rows
 
 private struct InspectorLoadingRows: View {

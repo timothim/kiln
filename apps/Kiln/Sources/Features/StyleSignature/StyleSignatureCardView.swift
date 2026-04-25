@@ -342,19 +342,6 @@ struct StyleSignatureCardArt: View {
     }
 }
 
-// MARK: - Section label
-
-private struct SectionLabel: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(Kiln.Font.label)
-            .kerning(0.44)
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-    }
-}
-
 // MARK: - Word cloud
 
 private struct SignaturePhraseCloud: View {
