@@ -22,7 +22,9 @@ subcommand):
 
 Plus a single ``--query`` argument. The output is one
 ``classification`` event per top-K match, in descending similarity
-order, followed by a terminal ``done(stage="classify")``.
+order, followed by a terminal ``done(stage="generation")`` (the
+``classify`` stage is reserved for M9.C; M9.B emits the pre-existing
+``generation`` stage to keep this branch off ``events.py``).
 """
 
 from __future__ import annotations

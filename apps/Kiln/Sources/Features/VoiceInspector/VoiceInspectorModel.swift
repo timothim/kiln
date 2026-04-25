@@ -101,7 +101,10 @@ final class VoiceInspectorModel {
         let runner = self.runner
         let topK = self.topK
         let embedder = self.embedderMode
-        let lookup = Dictionary(uniqueKeysWithValues: corpus.map { ($0.id, $0) })
+        // First-wins on duplicate ids: `uniqueKeysWithValues` traps,
+        // and a malformed corpus shouldn't crash the app. Verifier T2
+        // finding on PR #17.
+        let lookup = Dictionary(corpus.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         inFlight = Task { @MainActor [weak self] in
             do {
