@@ -13,9 +13,14 @@ import OSLog
 
 public enum IngestAgentEvent: Sendable, Hashable {
     case agentThinking(content: String)
+    case orchestratorThinking(content: String)
     case subagentSpawned(source: String)
+    case subagentReturned(source: String, samplesCount: Int)
     case sampleFound(source: String, sampleID: String, preview: String, confidence: Double)
     case agentDecision(content: String)
+    case deduplicationRound(before: Int, after: Int)
+    case qualityFilterRound(before: Int, after: Int)
+    case finalization(totalSamples: Int)
     case completion(samplesKept: Int, sourcesProcessed: Int, sourcesSkipped: [String])
     case error(code: String, message: String)
 }
@@ -120,9 +125,18 @@ public final class SubprocessIngestAgentRunner: IngestAgentRunner, @unchecked Se
                             continuation.yield(.agentThinking(
                                 content: obj["content"] as? String ?? ""
                             ))
+                        case "orchestrator_thinking":
+                            continuation.yield(.orchestratorThinking(
+                                content: obj["content"] as? String ?? ""
+                            ))
                         case "subagent_spawned":
                             continuation.yield(.subagentSpawned(
                                 source: obj["source"] as? String ?? ""
+                            ))
+                        case "subagent_returned":
+                            continuation.yield(.subagentReturned(
+                                source: obj["source"] as? String ?? "",
+                                samplesCount: (obj["samples_count"] as? Int) ?? 0
                             ))
                         case "sample_found":
                             continuation.yield(.sampleFound(
@@ -134,6 +148,20 @@ public final class SubprocessIngestAgentRunner: IngestAgentRunner, @unchecked Se
                         case "agent_decision":
                             continuation.yield(.agentDecision(
                                 content: obj["content"] as? String ?? ""
+                            ))
+                        case "deduplication_round":
+                            continuation.yield(.deduplicationRound(
+                                before: (obj["before"] as? Int) ?? 0,
+                                after: (obj["after"] as? Int) ?? 0
+                            ))
+                        case "quality_filter_round":
+                            continuation.yield(.qualityFilterRound(
+                                before: (obj["before"] as? Int) ?? 0,
+                                after: (obj["after"] as? Int) ?? 0
+                            ))
+                        case "finalization":
+                            continuation.yield(.finalization(
+                                totalSamples: (obj["total_samples"] as? Int) ?? 0
                             ))
                         case "completion":
                             continuation.yield(.completion(

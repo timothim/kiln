@@ -72,12 +72,31 @@ final class SourceConnectModel {
                 switch event {
                 case .agentThinking(let content):
                     log.append(.init(kind: .thinking, text: content))
+                case .orchestratorThinking(let content):
+                    log.append(.init(kind: .thinking, text: content))
                 case .subagentSpawned(let src):
-                    log.append(.init(kind: .spawn, text: "Reading from \(src)…"))
+                    log.append(.init(kind: .spawn, text: "  ↳ sub-agent reading \(src)…"))
+                case .subagentReturned(let src, let count):
+                    log.append(.init(kind: .spawn, text: "  ↳ \(src) returned \(count) samples"))
                 case .sampleFound(let src, _, let preview, _):
                     log.append(.init(kind: .sample, text: "[\(src)] \(preview)"))
                 case .agentDecision(let content):
                     log.append(.init(kind: .decision, text: content))
+                case .deduplicationRound(let before, let after):
+                    log.append(.init(
+                        kind: .decision,
+                        text: "Dedup: \(before) → \(after)"
+                    ))
+                case .qualityFilterRound(let before, let after):
+                    log.append(.init(
+                        kind: .decision,
+                        text: "Quality filter: \(before) → \(after)"
+                    ))
+                case .finalization(let total):
+                    log.append(.init(
+                        kind: .decision,
+                        text: "Finalized at \(total) samples"
+                    ))
                 case .completion(let kept, let processed, let skipped):
                     log.append(.init(
                         kind: .completion,
