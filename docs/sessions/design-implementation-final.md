@@ -75,12 +75,17 @@ Full table at `docs/design/design-package-reconciliation.md`. Top changes:
 | Commit | Subject |
 |---|---|
 | `8bba11d` | design(tokens): paper-and-ember rewrite per Claude Design package |
-| `9ea21b0` | design(shell+primitives): paper background, mono context badge, four new primitives |
+| `9a7cc2f` | design(shell+primitives): paper background, mono context badge, four new primitives |
 | `7416ff1` | design(hero-surfaces): drop, growing model, voice mirror, advisor, coach |
 | `4dadcf3` | design(A-tier surfaces): paper background + ember-dot eyebrows |
+| `5b1c0ec` | docs(sessions): design implementation final session report |
+| `aad4520` | design(verifier-follow-up): drop-zone scale dedup + cursor-blink token |
 
-**PR:** opened against main as the next step (link added to top of this report when filed).
-**Verifier:** to be run on the PR before review.
+**PR:** [#31 design: paper-and-ember rewrite per Claude Design package](https://github.com/timothim/kiln/pull/31)
+**Verifier verdict:**
+- First pass: *needs follow-up*. Tier-2 layout bug — `EmptyDropView` had a duplicated `.scaleEffect(1.04)` chain (drop zone scaled to ~1.08× on targeted instead of the spec'd 1.04). Tier-3 — typewriter cursor used an inline 540ms `.easeInOut` literal instead of a `Kiln.Motion.*` token.
+- Both fixed in `aad4520`: removed the duplicated chain, bumped the targeted-state border from 1.5→2.0px (which also resolved a no-op ternary), promoted the blink to `Kiln.Motion.cursorBlink`. Branch is now ready to merge.
+
 **Merge status:** **not merged** — left for Tim's review per the brief.
 
 ---
