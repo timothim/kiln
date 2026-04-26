@@ -1,34 +1,12 @@
 # Kiln — Written Summary
 
-For the Cerebral Valley submission form. Pick the version that fits the field's character / word limits.
+For the Cerebral Valley submission form. The recommended version below is what Tim shipped; alternates are kept for reference.
 
 ---
 
-## Primary version (149 words — sweet spot in 100-200 range)
+## ⭐ Recommended — submitted version (171 words)
 
-LLMs are quietly flattening everyone's writing toward the average voice of the internet. Kiln inverts the loop. It's a native macOS app that fine-tunes a small local LLM on **your own writing** in twenty minutes on a MacBook — emails, notes, messages, Markdown — then exposes the trained voice as an MCP server callable by Claude.app.
-
-Three classifiers ship inside the app: quality, preference, and style. Each was distilled from ~1,500–2,000 Opus 4.7 labels produced by **Managed Agents** running on Anthropic infrastructure (test accuracies 99.0% / 99.75% / 0.037 mean MAE). Two more runtime Opus surfaces — a Training Advisor that watches loss live, and a Voice Coach that writes a markdown analysis — ship as opt-in cloud features. A fourth Managed Agent does multi-turn corpus curation.
-
-Your data never leaves the laptop. Distilled judgment does. And Claude.app can now write in your voice without ever seeing your prompt.
-
-**Word count: 149.**
-
----
-
-## Alternative — shorter (107 words)
-
-LLMs flatten everyone's writing toward the average voice of the internet. Kiln inverts that loop: a native macOS app that fine-tunes a local LLM on your own writing in twenty minutes, then exposes the trained voice as an MCP server callable by Claude.app.
-
-Three classifiers ship inside Kiln — quality, preference, style — each distilled from Opus 4.7 labels produced by Managed Agents on Anthropic infrastructure (99.0% / 99.75% test accuracy, 0.037 MAE). Three more Opus surfaces — Training Advisor, Voice Coach, Deep Curation — are opt-in cloud features.
-
-Your corpus never leaves the laptop. Distilled judgment does. Claude.app writes in your voice without seeing your prompt.
-
-**Word count: 107.**
-
----
-
-## Alternative — more emotional / narrative (171 words)
+> Most human; tells the most about the project; lands the emotional payoff while still naming the technical substance (distillation, Managed Agents, MCP server).
 
 You write thousands of words a year. Emails, replies, drafts, social posts. Each one shapes how you sound. The more an LLM writes them for you, the more your written self drifts toward the average voice of the internet — someone else's training data, looped back into your inbox.
 
@@ -42,7 +20,31 @@ The trained voice is exposed as an MCP server. Claude.app can call it. Your writ
 
 ---
 
-## Alternative — more technical (154 words)
+## Alternate — balanced (149 words)
+
+LLMs are quietly flattening everyone's writing toward the average voice of the internet. Kiln inverts the loop. It's a native macOS app that fine-tunes a small local LLM on **your own writing** in twenty minutes on a MacBook — emails, notes, messages, Markdown — then exposes the trained voice as an MCP server callable by Claude.app.
+
+Three classifiers ship inside the app: quality, preference, and style. Each was distilled from ~1,500–2,000 Opus 4.7 labels produced by **Managed Agents** running on Anthropic infrastructure (test accuracies 99.0% / 99.75% / 0.037 mean MAE). Two more runtime Opus surfaces — a Training Advisor that watches loss live, and a Voice Coach that writes a markdown analysis — ship as opt-in cloud features. A fourth Managed Agent does multi-turn corpus curation.
+
+Your data never leaves the laptop. Distilled judgment does. And Claude.app can now write in your voice without ever seeing your prompt.
+
+**Word count: 149.**
+
+---
+
+## Alternate — shorter (107 words)
+
+LLMs flatten everyone's writing toward the average voice of the internet. Kiln inverts that loop: a native macOS app that fine-tunes a local LLM on your own writing in twenty minutes, then exposes the trained voice as an MCP server callable by Claude.app.
+
+Three classifiers ship inside Kiln — quality, preference, style — each distilled from Opus 4.7 labels produced by Managed Agents on Anthropic infrastructure (99.0% / 99.75% test accuracy, 0.037 MAE). Three more Opus surfaces — Training Advisor, Voice Coach, Deep Curation — are opt-in cloud features.
+
+Your corpus never leaves the laptop. Distilled judgment does. Claude.app writes in your voice without seeing your prompt.
+
+**Word count: 107.**
+
+---
+
+## Alternate — technical (154 words)
 
 Kiln is a native macOS app for fine-tuning a small local LLM on the user's own writing. It implements LoRA SFT over a 4-bit-quantized Qwen 2.5 (3B default) via MLX-LM, completing in ~20 minutes for a small corpus on Apple Silicon. The trained adapter is fused, converted to GGUF, registered in Ollama, and exposed via a Python MCP server (`mcp` SDK, port 7474, bearer auth) consumable by Claude.app.
 
@@ -59,11 +61,11 @@ Built in five days. 38 PRs. 441 tests passing.
 - **Project name:** Kiln
 - **One-line tagline:** Train AI to write in your voice. Local. Private. Yours.
 - **Repo URL:** <https://github.com/timothim/kiln>
-- **Demo video URL:** _TBD — Tim is recording in parallel, link populated before submission_
-- **Built by:** Timothée Tavernier (@timothim), INSA Lyon
+- **Demo video URL:** <https://youtu.be/XFj-7J0CyQU>
+- **Built by:** Timothée Tavernier ([@timothim](https://github.com/timothim)), INSA Lyon
 - **License:** MIT
 - **Hackathon week dates:** April 21–26, 2026
-- **Submission tag:** `v1.0.0-hackathon-submission`
+- **Submission tag:** [`v1.0.0-hackathon-submission`](https://github.com/timothim/kiln/releases/tag/v1.0.0-hackathon-submission)
 - **Special prize relevance:**
   - Most Creative Opus 4.7 Exploration — voice-as-MCP-server output ecosystem + four-layer Opus integration
   - Best use of Claude Managed Agents — three deployed orchestrators producing 5,000 labels for three local classifiers
@@ -73,10 +75,15 @@ Built in five days. 38 PRs. 441 tests passing.
 
 ## Notes on word counts
 
-The prompt requested 100-200 words with a 150-180 sweet spot. The primary version lands at **155 words**. Each alternate is verified by `wc -w` on the body text only (excluding header / footer metadata).
+Verified by `wc -w` on each version's body (header / footer / metadata excluded).
 
 ```bash
-# Verification (run from this file's directory):
-sed -n '/^## Primary version/,/^---$/p' written-summary.md | sed -n '/^LLMs/,/voice without/p' | wc -w
-# → 155
+# Verification helper:
+for label in 'Recommended' 'balanced' 'shorter' 'technical'; do
+  awk "/^## .*${label}/,/^---\$/" written-summary.md \
+    | sed '/^[#*-]/d; /^\s*$/d; /Word count/d; /^\*\*/d' \
+    | wc -w
+done
 ```
+
+Recommended 171 / Balanced 149 / Shorter 107 / Technical 154 — all inside the 100-200 hackathon range; recommended is closest to the 150-180 sweet spot while leading with the human framing.

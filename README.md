@@ -21,7 +21,7 @@
 
 Kiln is a native macOS app that fine-tunes a small local LLM on your own writing in about twenty minutes on a MacBook. Drop a folder of your emails, notes, messages, and Markdown — Kiln dedupes the corpus, scores it with three Opus-distilled classifiers running on-device, runs LoRA fine-tuning via MLX, and exposes the trained voice through Ollama and as an MCP server. Your data never leaves the laptop. Anthropic's Opus 4.7 was used at development time to teach three small classifiers Kiln ships locally, and is available as opt-in cloud advisor features (Voice Coach, Training Advisor, Deep Curation).
 
-> **Submission for** the Built with Opus 4.7 hackathon (April 21–26, 2026). The 3-minute demo lands at `docs/demo/final.mp4` ahead of submission.
+> **Submission for** the Built with Opus 4.7 hackathon (April 21–26, 2026). [**▶ Watch the 3-minute demo on YouTube**](https://youtu.be/XFj-7J0CyQU).
 
 ---
 
@@ -160,7 +160,7 @@ docs/
   ipc/                      JSON-line event protocol reference
   sessions/                 Engineering session reports (transparency)
   submission/               Hackathon submission artifacts (written summary)
-  demo/                     Demo recording script + (TBD) final.mp4
+  demo/                     Demo recording materials (final cut on YouTube)
 SPEC.md                     Product + pipeline spec (single source of truth)
 DESIGN.md                   Token system + design rules
 DECISIONS.md                Load-bearing technical decisions, with options + reasoning

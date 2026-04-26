@@ -344,7 +344,7 @@ Live-updated at `/milestone N`. Through end of day 3 of 5, rolled forward throug
 
 ### 9.5 Human-facing output
 
-- Final demo video length: recorded immediately before submission; target 2:45–3:00 / 3:00 cap. Lands at `docs/demo/final.mp4`.
+- Final demo video: <https://youtu.be/XFj-7J0CyQU> (3:00, the recording Tim shipped to the hackathon submission form).
 - North-Star Demo steps landed: **4** / 7 (drop-folder ingest, Dataset Doctor, prepare stage, M4 training-stream preview — still missing Growing Model, Before/After, Ship)
 - Empty/error/in-progress states landed: **19** panels (per Swift-side `hasEmptyState` / `hasErrorState` grep through M4) / target "every panel"
 - Tests: **97** Swift (KilnCoreTests, 7 skipped behind `IS_IMPLEMENTED` flags for M6+ features) + **9** KilnTests (UI harness) + **124** Python (`pytest packages/kiln_trainer`, 2 skipped) = **230** runs green in **~8 s** via `make test` (the post-Task-2 scaffolds added 20 Swift + 6 Python tests exercising the `notImplemented` contracts so future implementers land green)
@@ -431,7 +431,7 @@ What this surface uniquely added beyond Claude Code: a complete spatial language
 
 The 3-minute demo recording is the single highest-weighted artifact in the submission (25% of the score). Tim recorded it personally; Claude (the chat surface, separate from Claude Code) scaffolded the materials around the recording:
 
-- **Demo storyboard** — the 75-second cut from Claude Design's brief was lifted into a frame-by-frame storyboard with cursor positions, cut points, and on-screen captions. Drives the recording in real time; the final cut lands at `docs/demo/final.mp4`.
+- **Demo storyboard** — the 75-second cut from Claude Design's brief was lifted into a frame-by-frame storyboard with cursor positions, cut points, and on-screen captions. Drives the recording in real time; final cut at <https://youtu.be/XFj-7J0CyQU>.
 - **Pre-record checklist** — a 60-second pre-take checklist that catches the demo-killing failure modes (Ollama not running, stale project in sidebar with empty adapter dir, Settings working-directory not set, model not yet downloaded from HuggingFace). Lives at [`scripts/pre-record-checklist.sh`](scripts/pre-record-checklist.sh).
 - **Demo dataset persona** — a coherent fake-author voice (the demo corpus persona used uniformly across Source Connect, Voice Splitter, Sample Before/After, Voice Mirror, Voice Inspector, Style Signature Card) was drafted in artifact form, validated by `DemoCorpusReproducibilityTests`, and committed under [`tests/fixtures/demo_corpus/`](tests/fixtures/demo_corpus/).
 - **Storyboard for the recording itself** — the demo-recording skill (`.claude/skills/kiln-demo-recording/SKILL.md`) was authored against the storyboard, including failure-mode recovery plans for the most common shots that go wrong on a 30 fps screen capture.
