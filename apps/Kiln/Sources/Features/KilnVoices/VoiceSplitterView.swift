@@ -35,12 +35,17 @@ struct VoiceSplitterView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.m) {
-            VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+            VStack(alignment: .leading, spacing: Kiln.Space.s2) {
+                Text("VOICE SPLITTER")
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
                 Text("Shape your voice")
                     .font(Kiln.Font.title)
+                    .foregroundStyle(Kiln.Palette.onSurface)
                 Text("Pick which parts of your writing to include. You can train multiple personas and switch between them later.")
                     .font(Kiln.Font.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Kiln.Palette.onSurface2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)

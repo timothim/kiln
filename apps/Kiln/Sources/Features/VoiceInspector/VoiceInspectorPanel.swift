@@ -64,10 +64,10 @@ struct VoiceInspectorPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.m) {
             header
-            Divider().opacity(0.4)
+            Divider()
             if let selection {
                 selectionBlock(selection)
-                Divider().opacity(0.4)
+                Divider()
                 nearestBlock
             } else {
                 emptyState
@@ -93,16 +93,26 @@ struct VoiceInspectorPanel: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Why this phrase")
-                .font(Kiln.Font.title)
+        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.s3) {
+            VStack(alignment: .leading, spacing: Kiln.Space.s1) {
+                HStack(spacing: Kiln.Space.s2) {
+                    EmberDot(size: 6)
+                    Text("VOICE INSPECTOR")
+                        .font(Kiln.Font.eyebrow)
+                        .kerning(0.4)
+                        .foregroundStyle(Kiln.Palette.onSurface3)
+                }
+                Text("Why this phrase")
+                    .font(Kiln.Font.title)
+                    .foregroundStyle(Kiln.Palette.onSurface)
+            }
             Spacer(minLength: 0)
             Button {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: Kiln.Icon.small, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Kiln.Palette.onSurface2)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Dismiss inspector")

@@ -9,6 +9,27 @@ import KilnCore
 @MainActor
 final class SettingsWiringTests: XCTestCase {
 
+    /// `CloudFeaturesSettings` reads its toggles from `UserDefaults.standard`
+    /// at init. Without a hermetic setUp, a previous interactive run (or any
+    /// other test that flipped a cloud toggle) leaks `true` values into this
+    /// suite and the "default state is off" assertions fail. Resetting the
+    /// known keys before every test makes the suite idempotent.
+    override func setUp() {
+        super.setUp()
+        let defaults = UserDefaults.standard
+        for key in [
+            CloudFeaturesSettingsKeys.voiceCoachEnabled,
+            CloudFeaturesSettingsKeys.voiceCoachLocalMode,
+            CloudFeaturesSettingsKeys.trainingAdvisorEnabled,
+            CloudFeaturesSettingsKeys.mcpServerEnabled,
+            CloudFeaturesSettingsKeys.mcpServerPort,
+            CloudFeaturesSettingsKeys.agentIngestionEnabled,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.synchronize()
+    }
+
     func test_cloudSettings_is_constructable() {
         let app = AppModel()
         // Reading the toggles should not crash even when no defaults are set.

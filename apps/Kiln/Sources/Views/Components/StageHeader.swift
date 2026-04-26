@@ -8,11 +8,11 @@ struct StageHeader: View {
     let stage: ProjectStage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-            HStack(spacing: Kiln.Space.xs) {
+        VStack(alignment: .leading, spacing: Kiln.Space.s2) {
+            HStack(spacing: Kiln.Space.s3) {
                 Text(title)
                     .font(Kiln.Font.display)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Kiln.Palette.onSurface)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -24,7 +24,7 @@ struct StageHeader: View {
             if let subtitle {
                 Text(subtitle)
                     .font(Kiln.Font.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Kiln.Palette.onSurface2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

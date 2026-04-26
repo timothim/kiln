@@ -150,11 +150,11 @@ private struct StyleSignatureSkeletonCard: View {
                 skeletonLine
                 skeletonBar(width: 380, height: 13)
             }
-            Divider().opacity(0.4)
+            Divider()
             skeletonSection(labelWidth: 150, chipWidths: [76, 110, 64, 88, 120, 54, 90])
-            Divider().opacity(0.4)
+            Divider()
             skeletonSection(labelWidth: 180, chipWidths: [180, 220, 160, 200])
-            Divider().opacity(0.4)
+            Divider()
             HStack(alignment: .bottom, spacing: Kiln.Space.l) {
                 VStack(alignment: .leading, spacing: Kiln.Space.xs) {
                     skeletonBar(width: 110, height: 11)
