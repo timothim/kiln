@@ -84,9 +84,29 @@ Full table at `docs/design/design-package-reconciliation.md`. Top changes:
 **PR:** [#31 design: paper-and-ember rewrite per Claude Design package](https://github.com/timothim/kiln/pull/31)
 **Verifier verdict:**
 - First pass: *needs follow-up*. Tier-2 layout bug — `EmptyDropView` had a duplicated `.scaleEffect(1.04)` chain (drop zone scaled to ~1.08× on targeted instead of the spec'd 1.04). Tier-3 — typewriter cursor used an inline 540ms `.easeInOut` literal instead of a `Kiln.Motion.*` token.
-- Both fixed in `aad4520`: removed the duplicated chain, bumped the targeted-state border from 1.5→2.0px (which also resolved a no-op ternary), promoted the blink to `Kiln.Motion.cursorBlink`. Branch is now ready to merge.
+- Both fixed in `aad4520`: removed the duplicated chain, bumped the targeted-state border from 1.5→2.0px (which also resolved a no-op ternary), promoted the blink to `Kiln.Motion.cursorBlink`. Branch ready to merge.
 
-**Merge status:** **not merged** — left for Tim's review per the brief.
+**Merge status:** ✅ **merged** to `main` as `2bad111` on 2026-04-26 after the ship-readiness pass (`0dbd1cd`) closed the loop on B-tier surfaces and fixed the UserDefaults test pollution.
+
+## Ship-readiness pass (post-PR-#31 merge)
+
+After the redesign landed on `main`, the user directed: *"Finish everything that's not finished, so we can ship the app."* The final pass cleared the remaining blockers:
+
+- **Test pollution fixed.** `SettingsWiringTests` now `setUp()`-clears the six `CloudFeaturesSettingsKeys.*` `UserDefaults.standard` entries before every test. Pre-existing failure on `test_cloudSettings_is_constructable` resolved.
+- **B-tier surface refresh.** `StageHeader`, `VoiceSplitterView`, `MCPServerSettingsView`, `CloudFeaturesSettings`, `VoiceInspectorPanel`, `StyleSignatureCardView` all migrated off `.primary`/`.secondary` SwiftUI semantic colors onto `Kiln.Palette.onSurface*` warm browns. Purple sparkles `Image` icons replaced with `EmberDot` per DESIGN.md "no second accent" rule. Headers gain mono eyebrow + serif title pattern. Five remaining `Divider().opacity(0.4)` literals → semantic-default `Divider()` via sed.
+
+**Final ship gate (verified on `main` post-merge):**
+
+| Check | Result |
+|---|---|
+| `xcodebuild build` Debug | ✅ 0 errors, 0 warnings |
+| `xcodebuild test` (Kiln app suite) | ✅ 79 tests, 0 failures |
+| `make demo-check` | ✅ 9/9 PASS (Drop / Doctor / Style profile / Training / Growing Model / Before-After / Ollama export / Pilot evidence) |
+| Runtime API leakage (`api.anthropic.com`, `api.openai.com` in `apps/Kiln/`+ `packages/KilnCore/`) | ✅ 0 hits |
+| Force-unwrap audit on view code | ✅ no production force-unwraps (the two grep hits are `".!?".contains(c)` and the sanctioned "Exported X!" exclamation) |
+| Open PRs | ✅ zero — PR #28 (Sunday animations) closed as superseded by the redesign's `Kiln.Motion` token system + `Typewriter` primitive |
+
+App is ship-ready.
 
 ---
 
