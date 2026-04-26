@@ -375,10 +375,10 @@ struct DeepCurationView: View {
             VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
                 HStack(spacing: Kiln.Space.xs) {
                     ProgressView().controlSize(.small)
-                    Text("Agent has reviewed \(reviewed) samples")
+                    Text("Agent has reviewed \(reviewed, format: .number) samples")
                         .font(Kiln.Font.body)
                 }
-                Text("Removals so far: \(removals) · Flags: \(flags)")
+                Text("Removals so far: \(removals, format: .number) · Flags: \(flags, format: .number)")
                     .font(Kiln.Font.caption)
                     .foregroundStyle(.secondary)
             }
@@ -436,7 +436,7 @@ struct DeepCurationView: View {
                     } label: {
                         HStack {
                             Text(group.key).font(Kiln.Font.body.weight(.medium))
-                            Text("(\(group.decisions.count))")
+                            Text("(\(group.decisions.count, format: .number))")
                                 .font(Kiln.Font.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -528,25 +528,50 @@ struct DeepCurationView: View {
                 .kerning(0.44)
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
-            VStack(alignment: .leading, spacing: 4) {
-                if model.thinkingLog.isEmpty {
-                    Text("(empty — start curation to see live updates)")
-                        .font(Kiln.Font.caption)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    ForEach(Array(model.thinkingLog.enumerated()), id: \.offset) { _, entry in
-                        Text("🤔 \(entry)")
-                            .font(Kiln.Font.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+            // Cap visible height + tail to last 40 entries — Opus emits a
+            // long stream during curation, but the user only needs the
+            // recent context.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if model.thinkingLog.isEmpty {
+                            Text("(empty — start curation to see live updates)")
+                                .font(Kiln.Font.caption)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            // DESIGN.md §Typography: "No emoji" — typographic prefix only.
+                            let entries = Array(model.thinkingLog.suffix(40).enumerated())
+                            ForEach(entries, id: \.offset) { offset, entry in
+                                HStack(alignment: .top, spacing: Kiln.Space.xs) {
+                                    Text("◇")
+                                        .font(Kiln.Font.label)
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
+                                    Text(entry)
+                                        .font(Kiln.Font.caption)
+                                        .foregroundStyle(.primary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .id(offset)
+                            }
+                        }
+                    }
+                    .padding(Kiln.Space.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+                .background {
+                    RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
+                }
+                .onChange(of: model.thinkingLog.count) { _, newCount in
+                    let lastIndex = min(newCount, 40) - 1
+                    if lastIndex >= 0 {
+                        withAnimation(Kiln.Motion.standard) {
+                            proxy.scrollTo(lastIndex, anchor: .bottom)
+                        }
                     }
                 }
-            }
-            .padding(Kiln.Space.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
             }
         }
     }

@@ -91,12 +91,45 @@ def run(args: argparse.Namespace) -> int:
 
     runtime.log("dataset prepared", **{f"n_{k}": v for k, v in counts.items()})
 
+    # mlx_lm.lora's iterate_batches raises if either split is smaller than
+    # ``batch_size``. Cap batch_size to the smallest split (clamped >=1) so
+    # tiny demo corpora don't crash with
+    # ``Dataset must have at least batch_size=N examples but only has M``.
+    smallest_split = min(counts.get("train", 0), counts.get("valid", 0))
+    if smallest_split > 0 and batch_size > smallest_split:
+        original = batch_size
+        batch_size = max(1, smallest_split)
+        runtime.log(
+            "batch-size lowered for small corpus",
+            requested=original,
+            effective=batch_size,
+            **{f"n_{k}": v for k, v in counts.items()},
+        )
+
     # (4) compute iters
     if args.iters is not None:
         iters = max(1, args.iters)
     else:
         iters_per_epoch = max(1, counts["train"] // batch_size)
         iters = max(10, epochs * iters_per_epoch)
+
+    # Demo-friendly checkpoint cadence. mlx_lm.lora 0.21.5 only writes
+    # ``adapters.safetensors`` at ``save-every`` milestones — it does not
+    # auto-save the final state. With the default save-every=50 and a
+    # small corpus (iters=10–40) the user gets nothing on disk and the
+    # downstream Sample / Export / Chat all 404. Override only when the
+    # caller's save-every would produce zero checkpoints.
+    if args.save_every > iters:
+        effective_save_every = max(2, iters // 3)
+        runtime.log(
+            "save-every cadence",
+            requested=args.save_every,
+            effective=effective_save_every,
+            iters=iters,
+            note="capped to ensure checkpoints fire on a small run",
+        )
+    else:
+        effective_save_every = args.save_every
 
     # (5) YAML config (rank/alpha/keys are YAML-only in mlx-lm 0.21.*)
     config_path = run_dir / "lora_config.yaml"
@@ -120,6 +153,7 @@ def run(args: argparse.Namespace) -> int:
         learning_rate=learning_rate,
         lora_layers=lora_layers,
         max_seq_length=max_seq_length,
+        save_every=effective_save_every,
     )
     runtime.log("spawning trainer", iters=iters, batch_size=batch_size, rank=rank, alpha=alpha)
 
@@ -360,11 +394,18 @@ def _build_cmd(
     learning_rate: float,
     lora_layers: int,
     max_seq_length: int,
+    save_every: int | None = None,
 ) -> list[str]:
     if args.trainer_entry:
         base = [sys.executable, str(args.trainer_entry)]
     else:
         base = [sys.executable, "-m", args.trainer_module]
+    # mlx_lm.lora prints a "Iter N: Train loss ..." line every
+    # ``--steps-per-report`` iterations (default 10). On a small demo run
+    # of e.g. 8 iters that means zero progress lines until iter 10 — the
+    # Kiln UI would jump from 0% straight to done. Aim for ~10 progress
+    # ticks per run, clamped to >=1.
+    steps_per_report = max(1, min(10, iters // 10 if iters >= 10 else 1))
     return base + [
         "--model", args.model,
         "--train",
@@ -376,7 +417,8 @@ def _build_cmd(
         "--batch-size", str(batch_size),
         "--learning-rate", str(learning_rate),
         "--num-layers", str(lora_layers),
-        "--save-every", str(args.save_every),
+        "--save-every", str(save_every if save_every is not None else args.save_every),
+        "--steps-per-report", str(steps_per_report),
         "--val-batches", str(args.val_batches),
         "--max-seq-length", str(max_seq_length),
         "--grad-checkpoint",

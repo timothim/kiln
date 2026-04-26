@@ -51,7 +51,7 @@ struct EmptyDropView: View {
                 }
             }
             .emberGlow(cornerRadius: Kiln.Radius.modal)
-            .scaleEffect(isTargeted ? 1.01 : 1.0)
+            .scaleEffect(isTargeted ? 1.025 : 1.0)
             .animation(Kiln.Motion.standard, value: isTargeted)
             .dropFolder(isTargeted: $isTargeted) { url in
                 withAnimation(Kiln.Motion.standard) {

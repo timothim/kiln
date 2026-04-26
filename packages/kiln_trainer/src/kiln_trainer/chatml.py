@@ -78,11 +78,17 @@ def split_rows(
     valid_ratio: float = 0.05,
     test_ratio: float = 0.02,
     seed: int = 42,
+    min_valid: int = 4,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Deterministically shuffle and split a row list into (train, valid, test).
 
-    Guarantees: at least one row in valid when the input has ≥ 2 rows, and
-    never allocates so many rows to valid+test that train becomes empty.
+    Guarantees:
+    - At least one row in valid when the input has ≥ 2 rows.
+    - When the input is large enough, valid carries at least ``min_valid``
+      rows so mlx_lm.lora's ``evaluate()`` can fill a batch (otherwise it
+      raises ``Dataset must have at least batch_size=N examples but only
+      has M``).
+    - Never allocates so many rows to valid+test that train becomes empty.
     """
     rng = random.Random(seed)
     shuffled = list(rows)
@@ -90,9 +96,16 @@ def split_rows(
     n = len(shuffled)
     if n == 0:
         return [], [], []
-    n_valid = max(1, int(n * valid_ratio)) if n >= 2 else 0
+    if n < 2:
+        return shuffled, [], []
+    target_valid = max(1, int(n * valid_ratio))
+    # Pad the valid split toward ``min_valid`` whenever the corpus is big
+    # enough that train still has room. The cap (n - min_valid) stops us
+    # from biting into train on a very small corpus.
+    if n >= min_valid * 2:
+        target_valid = max(target_valid, min_valid)
+    n_valid = min(target_valid, n - 1)
     n_test = int(n * test_ratio)
-    # Never starve the train split.
     if n_valid + n_test >= n:
         n_test = 0
         n_valid = min(n_valid, n - 1)

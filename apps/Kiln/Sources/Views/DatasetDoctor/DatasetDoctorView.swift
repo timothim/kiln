@@ -101,7 +101,7 @@ struct DatasetDoctorView: View {
                 .font(Kiln.Font.body)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("\(count)")
+            Text(count, format: .number)
                 .font(Kiln.Font.body)
                 .monospacedDigit()
                 .foregroundStyle(count > 0 ? .primary : .tertiary)
@@ -109,7 +109,7 @@ struct DatasetDoctorView: View {
     }
 
     private var skippedFooter: some View {
-        Text("\(report.filesSkipped.count) files skipped.")
+        Text("\(report.filesSkipped.count, format: .number) files skipped.")
             .font(Kiln.Font.caption)
             .foregroundStyle(.tertiary)
     }

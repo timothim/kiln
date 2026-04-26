@@ -208,13 +208,13 @@ private struct TrainingRunningView: View {
             )
             .frame(maxWidth: 640)
 
-            // PR #23 Training Advisor — appears as soon as the first
-            // observation arrives. Hidden during warm-up when there's
-            // nothing for Opus to react to yet.
-            if !model.advisorObservations.isEmpty {
+            // PR #23 Training Advisor — observations arrive after the first
+            // checkpoint. Stay hidden during warm-up so the panel never
+            // contradicts the "Warming up" subtitle.
+            if !model.isWarmingUp, !model.advisorObservations.isEmpty {
                 TrainingAdvisorInlinePanel(observations: model.advisorObservations)
                     .frame(maxWidth: 640)
-                    .transition(.opacity)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Spacer(minLength: 0)
@@ -245,10 +245,11 @@ private struct TrainingRunningView: View {
 
     private var iterDisplay: String {
         let current = model.currentProgress?.iter ?? 0
+        let currentStr = current.formatted(.number)
         if let total = model.totalIters {
-            return "\(current) of \(total)"
+            return "\(currentStr) of \(total.formatted(.number))"
         }
-        return "\(current)"
+        return currentStr
     }
 
     private var lossDisplay: String {
@@ -282,9 +283,9 @@ private struct TrainingCompletedView: View {
             )
 
             HStack(spacing: Kiln.Space.m) {
-                Stat(label: "Iterations", value: "\(report.itersCompleted)")
-                Stat(label: "Final loss", value: report.finalLoss.map { String(format: "%.2f", $0) } ?? "—")
-                Stat(label: "Wall clock", value: formatDuration(report.wallClockSec))
+                Stat(label: "Iters", value: report.itersCompleted.formatted(.number))
+                Stat(label: "Loss", value: report.finalLoss.map { String(format: "%.2f", $0) } ?? "—")
+                Stat(label: "Time", value: formatDuration(report.wallClockSec))
                 Stat(label: "Adapter", value: report.adapterURL.lastPathComponent)
             }
             .frame(maxWidth: 640)

@@ -352,6 +352,8 @@ private struct SignaturePhraseCloud: View {
             ForEach(phrases, id: \.text) { phrase in
                 Text(phrase.text)
                     .font(.system(size: Self.fontSize(for: phrase.weight), weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .foregroundStyle(.primary)
                     .padding(.horizontal, Kiln.Space.xs)
                     .padding(.vertical, Kiln.Space.xxs)

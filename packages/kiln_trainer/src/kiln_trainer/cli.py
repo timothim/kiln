@@ -110,7 +110,10 @@ def _build_train_parser(sub: argparse._SubParsersAction) -> None:
         help="advisor model channel — cloud calls claude-opus-4-7, local calls qwen2.5:7b via Ollama",
     )
     # Hidden test seam: lets tests point at tests/fixtures/fake_trainer.py.
-    p.add_argument("--trainer-module", default="mlx_lm.lora", help=argparse.SUPPRESS)
+    # Default routes through ``kiln_trainer._mlx_lora`` so the
+    # transformers >=5.x ``apply_chat_template`` compat shim runs before
+    # ``mlx_lm.lora.main()``.
+    p.add_argument("--trainer-module", default="kiln_trainer._mlx_lora", help=argparse.SUPPRESS)
     p.add_argument("--trainer-entry", default=None, help=argparse.SUPPRESS)
     # Hidden test seam for the post-checkpoint sampler (M6.5). Threads through
     # to the spawned ``sample-batch`` subprocess so integration tests can swap

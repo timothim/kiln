@@ -146,6 +146,9 @@ struct VoiceInspectorPanel: View {
                     .font(Kiln.Font.caption)
                     .foregroundStyle(.tertiary)
             } else {
+                Text("Embedding similarity to the highlighted span")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.tertiary)
                 VStack(alignment: .leading, spacing: Kiln.Space.xs) {
                     ForEach(nearestSamples) { sample in
                         NearestSampleRow(sample: sample)
