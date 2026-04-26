@@ -393,3 +393,63 @@ Every cloud feature here meets four constraints:
 4. **Honest documentation.** Each feature's local fallback, scope cuts, and known limitations are documented in the PR body and in this file.
 
 Together with the build-time Opus story (§5) and the existing four Managed Agents (§6), Kiln now has **four layers** of Opus integration: Opus-as-teacher (offline distillation), Opus-as-runtime-advisor (cloud features above), Opus-as-Managed-Agent (Deep Curation), and Opus-as-MCP-consumer (Claude.app calling Kiln's MCP server to write in the user's voice). All four ship in the same `.app` bundle.
+
+---
+
+## 11. Sibling Claude surfaces — Design and chat / artifacts
+
+Claude Code did the engineering. Two adjacent Claude surfaces produced critical artifacts on the path to submission. Disclosing them here for transparency and because they materially shaped the final product.
+
+### 11.1 Claude Design — the 32-surface interactive prototype
+
+By Saturday evening the app was functionally complete but the UI was honest-engineering quality, not launch quality. The remaining time budget didn't fit a from-scratch design pass. The unblock was a **Claude Design** session that took a structured brief and returned a single self-contained interactive HTML prototype.
+
+The brief was scoped end-to-end:
+
+- A 75-second demo storyboard, frame-by-frame in 5-second beats, with cursor choreography and cut points.
+- A motion language ("Kindled") with five rules and a per-kind table for entry, exit, hover, focus, press.
+- 32 surfaces grouped by user journey (First run → Ingest → Train → Reveal → Ship → Inspect → Settings → System → Storyboard).
+- Per-surface deliverables: brief, wireframe, final copy strings, motion spec citing tokens, all states (empty / loading / success / error).
+- Custom assets list (commission-or-skip, with SwiftUI-native fallbacks).
+- Three highest-leverage changes if shipped on a 4-hour clock.
+- A waiting-state catalog for every long-running moment in the app (model download, MLX warmup, Opus calls, Ollama startup).
+
+Claude Design returned `kiln-prototype.html` — a single HTML file with three regions (surface picker, 1280×800 main canvas with simulated macOS chrome, annotation overlay). Tier-S surfaces (Drop, Training Running, Growing Model, Sample Before/After, Voice Mirror) had full live motion: typewriter effects, Canvas-drawn sparklines, cross-fading completions, signature-phrase tinting on hover. Tier-A surfaces (Pipeline, Source Connect, Logs, Voice Coach, Deep Curation) had streaming text with per-line cadence. Tier-B surfaces (Settings tabs, About, Behind the Scenes, Style Signature, Kiln Share) had wired hover/focus/press states and functional form fields. The file shipped with a record-mode keyboard shortcut that stripped chrome and rails for clean 1280×800 screen recording.
+
+The HTML prototype became the **specification** for the day-5 Swift rewrite. PRs that ported surfaces from prototype to production:
+
+- **PR #31** — *paper-and-ember rewrite per Claude Design package* — initial wholesale rebrand. Tokens, primitives (`EmberDot`, `Chip`, `PostItCard`, `Typewriter`, `LossSparkline`), shell paper background, hero surfaces.
+- **PR #33** — *fix(design): align tokens to proto-styles.css + actual drop surface* — token system rewritten 1:1 against prototype's `:root` (paper #FAF7F2, surface #FFFFFF, on-surface tiers, firing-wash 10%, firing-line 32%, danger/warn/success values, radius scale 4/6/10/14). EmptyDropView + ReadyStageView rewritten per `.drop-zone` recipe (78%×78% capped 720×460, dashed border, 80×80 ember div + ◇ rhombus, 28pt serif headline). `.preferredColorScheme(.light)` pinned on WindowGroup.
+- **PR #34** — *design(full): port surfaces from Claude Design proto-surfaces* — Doctor / Training / Coach headers per proto-surfaces, full token consumption across the remaining tier-A and tier-B views.
+- **PR #35** — *design(surfaces): Voice Mirror prompt-bar + per-column stage labels* — final surface polish + prompt-bar layout per the prototype's column reveal motion.
+
+Verifier subagent gated each PR. Phase 3 design report at [`docs/design/phase3-report.md`](docs/design/phase3-report.md) lists each prototype surface against its delivered Swift counterpart, with a tier rating and notes on what was deferred. Honest deferrals from the prototype: the wax-seal Share animation, the 12-second Behind the Scenes "film" phase 1, and the storyboard cursor choreography — those didn't fit the Saturday-night clock and are post-hackathon.
+
+What this surface uniquely added beyond Claude Code: a complete spatial language, token-by-token, before any Swift was rewritten. The prototype is a runnable design contract — open it in a browser, navigate with `↑/↓`, switch states with `1-6`, hide annotations with `A`, enter record mode with `R`. Every surface has a brief and a wireframe and final copy. Without it, the Saturday rewrite would have been a shape-by-shape SwiftUI fight, not a port.
+
+### 11.2 Claude (chat / artifacts) — demo storyboard, pre-record checklist, video script
+
+The 3-minute demo recording is the single highest-weighted artifact in the submission (25% of the score). Tim recorded it personally; Claude (the chat surface, separate from Claude Code) scaffolded the materials around the recording:
+
+- **Demo storyboard** — the 75-second cut from Claude Design's brief was lifted into a frame-by-frame storyboard with cursor positions, cut points, and on-screen captions. Drives the recording in real time; the final cut lands at `docs/demo/final.mp4`.
+- **Pre-record checklist** — a 60-second pre-take checklist that catches the demo-killing failure modes (Ollama not running, stale project in sidebar with empty adapter dir, Settings working-directory not set, model not yet downloaded from HuggingFace). Lives at [`scripts/pre-record-checklist.sh`](scripts/pre-record-checklist.sh).
+- **Demo dataset persona** — a coherent fake-author voice (the demo corpus persona used uniformly across Source Connect, Voice Splitter, Sample Before/After, Voice Mirror, Voice Inspector, Style Signature Card) was drafted in artifact form, validated by `DemoCorpusReproducibilityTests`, and committed under [`tests/fixtures/demo_corpus/`](tests/fixtures/demo_corpus/).
+- **Storyboard for the recording itself** — the demo-recording skill (`.claude/skills/kiln-demo-recording/SKILL.md`) was authored against the storyboard, including failure-mode recovery plans for the most common shots that go wrong on a 30 fps screen capture.
+
+The split between the two Claude surfaces was disciplined. **Claude Code** owned everything that touched the repo: Swift, Python, tests, PRs, verifier. **Claude Design** owned the visual contract. **Claude (chat)** owned the recording-adjacent artifacts and the demo-script storytelling. None of these surfaces had write access to the repo directly — Tim or Claude Code committed everything. That separation kept the verifier subagent meaningful: it gated only the code merges, where its skill lay.
+
+### 11.3 Why this multi-surface usage matters
+
+A common hackathon failure mode is reaching for one Claude surface for everything — usually a chat session — and ending up with code that's 70% there because one thread carried too many concerns. The four Claude surfaces in this build had **disjoint responsibilities**:
+
+| Surface | Domain | Outputs that touch the repo |
+|---|---|---|
+| Claude Code (LEAD worktree) | Engineering + integration | Swift, Python, tests, PRs, verifier reports |
+| Claude Code (UI-EXCELLENCE worktree) | SwiftUI views + view models | View files, design tokens, polish PRs |
+| Claude Code (DISTILL worktree) | Distillation runners + classifier training | `scripts/opus-*`, `packages/kiln_trainer/classifiers/`, `distilled/` artifacts |
+| Claude Code (TRAINER worktree) | Python sidecar + MLX integration | `packages/kiln_trainer/src/`, training tests |
+| Claude Design | Visual design + motion + interactive prototype | `kiln-prototype.html` (the contract), then PRs #31/#33/#34/#35 reflect it |
+| Claude (chat / artifacts) | Demo storyboard + recording materials + persona | `docs/demo/script.md`, `scripts/pre-record-checklist.sh`, persona fixtures |
+| Managed Agents (3 deployed) | Cloud-hosted distillation runs | `managed-agents/<name>/runs/<timestamp>/` JSONL outputs |
+
+Total surface count: **four Claude Code worktrees + two non-Code Claude surfaces + three Managed Agents**, plus the four runtime Opus surfaces inside the shipped product (§10) for a true "Opus-everywhere-but-still-local" topology.
