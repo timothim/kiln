@@ -88,84 +88,97 @@ private extension NSColor {
 enum Kiln {
 
     enum Palette {
-        // MARK: - Surface tiers (warm paper, not cool greys)
+        // MARK: - Surface tiers (1:1 with `proto-styles.css :root`)
 
-        /// Root app background — warm cream. The "paper" the whole app sits on.
-        /// Dark-mode pair is a warm-dark inversion that preserves the warmth.
-        static let paper        = Color.kiln(light: "#F5F1EA", dark: "#1A1714")
+        /// Root app background — `--paper` `#FAF7F2`. The whole app sits on
+        /// this warm cream canvas.
+        static let paper        = Color(hex: "#FAF7F2")
 
-        /// Cards, panels — quiet elevation. Slightly lighter than paper.
-        static let surface      = Color.kiln(light: "#FBF9F4", dark: "#21201D")
+        /// Cards, panels — `--surface` `#FFFFFF`. Pure white, slightly lighter
+        /// than paper so cards float as paper-on-paper.
+        static let surface      = Color(hex: "#FFFFFF")
 
-        /// Secondary fill — chips, kbd, button-secondary. Slightly darker than paper.
-        static let surface2     = Color.kiln(light: "#F0EBE0", dark: "#2B2925")
+        /// Secondary fill — `--surface-2` `#F5F1EA`. Chips, kbd, button-secondary.
+        static let surface2     = Color(hex: "#F5F1EA")
 
-        /// Sunken regions — log blocks, prompt bars, sample cards.
-        static let surfaceSunken = Color.kiln(light: "#EBE5D7", dark: "#26241F")
+        /// Sunken regions — `--surface-sunken` `#EDE8DF`. Log blocks, prompt
+        /// bars, sample cards.
+        static let surfaceSunken = Color(hex: "#EDE8DF")
 
-        /// Post-it card surface — Advisor and Voice Coach. Slightly warmer than `surface`.
-        static let surfacePaper = Color.kiln(light: "#FAF8F4", dark: "#23211D")
+        /// Post-it card surface — Advisor and Voice Coach. The design uses
+        /// `--surface` for these too; the slight warmth comes from context.
+        /// Kept as a separate token so call sites can be targeted later.
+        static let surfacePaper = Color(hex: "#FFFFFF")
 
-        // MARK: - Foreground tiers (warm browns, not pure neutrals)
+        // MARK: - Foreground tiers — 1:1 with `--on-surface[-N]`
 
-        /// Primary text. AA against `paper` (13.4:1 in light mode).
-        static let onSurface    = Color.kiln(light: "#1F1B16", dark: "#F2EDE3")
+        /// `#1F1B16` — primary text.
+        static let onSurface    = Color(hex: "#1F1B16")
 
-        /// Secondary text — captions, deemphasized body.
-        static let onSurface2   = Color.kiln(light: "#5C5246", dark: "#C9C0B1")
+        /// `#4A453E` — secondary text.
+        static let onSurface2   = Color(hex: "#4A453E")
 
-        /// Tertiary text — labels, dates, mono captions.
-        static let onSurface3   = Color.kiln(light: "#8C8073", dark: "#9C9486")
+        /// `#837B6E` — tertiary, captions, mono labels.
+        static let onSurface3   = Color(hex: "#837B6E")
 
-        /// Placeholder, disabled — quietest.
-        static let onSurface4   = Color.kiln(light: "#B8AE9D", dark: "#6E665B")
+        /// `#B5AFA3` — placeholder, disabled, drop-zone *empty-state* border.
+        static let onSurface4   = Color(hex: "#B5AFA3")
 
         // MARK: - Hairlines
 
-        /// Default hairline — 10% primary on paper. Borders, dividers, card edges.
-        static let hairline     = Color.kiln(light: "rgba(31,27,22,0.10)",
-                                             dark:  "rgba(242,237,227,0.12)")
+        /// `--hairline` `rgba(31,27,22,0.10)`.
+        static let hairline     = Color(hex: "#1F1B16").opacity(0.10)
 
-        /// Quieter hairline — 6% primary. Sub-section dividers, ghosted edges.
-        static let hairline2    = Color.kiln(light: "rgba(31,27,22,0.06)",
-                                             dark:  "rgba(242,237,227,0.07)")
+        /// `--hairline-strong` `rgba(31,27,22,0.20)` — the louder edge.
+        static let hairlineStrong = Color(hex: "#1F1B16").opacity(0.20)
+
+        /// Legacy alias kept for source-stability — points at `hairline` at
+        /// the same quiet alpha so the call sites that previously asked for
+        /// "the quieter hairline" still resolve cleanly.
+        static let hairline2    = hairline
 
         // MARK: - The one accent — amber, only on firing moments
 
-        /// `#D97706` — the single brand accent. Used only for firing moments:
-        /// training progress, drop-zone targeted state, *Teach* CTA, ember pulse.
-        /// Never on body text, dividers, decorative tints. (DESIGN.md §amber rule.)
+        /// `--firing` `#D97706` — the single brand accent. Used only for
+        /// firing moments: training progress, drop-zone targeted state,
+        /// *Teach* CTA, ember pulse. Never on body text, dividers, or
+        /// decorative tints. (DESIGN.md §amber rule.)
         static let firing       = Color(hex: "#D97706")
 
-        /// Hover / deeper accent — `#B45309`.
-        static let firing2      = Color(hex: "#B45309")
+        /// `--firing-2` `#C2410C` — hover / deeper accent.
+        static let firing2      = Color(hex: "#C2410C")
 
-        /// 6% amber wash — selected row, gentle highlight, training-stage backing pill.
-        /// Adapts to dark mode by retaining the same alpha against a warm-dark surface.
-        static let firingWash   = Color(hex: "#D97706").opacity(0.06)
+        /// `--firing-wash` `rgba(217, 119, 6, 0.10)` — 10% amber. Targeted
+        /// drop-zone fill, signature highlights, gentle row tints.
+        static let firingWash   = Color(hex: "#D97706").opacity(0.10)
 
-        /// 14% amber wash — signature-phrase tint, log-flash, stronger highlights.
-        static let firingWashStrong = Color(hex: "#D97706").opacity(0.14)
+        /// `--firing-line` `rgba(217, 119, 6, 0.32)` — 32% amber border. Used
+        /// on received-state drop zones, persona "active" outlines.
+        static let firingLine   = Color(hex: "#D97706").opacity(0.32)
 
-        /// White label paired with `firing` on `button-primary` — the only place
-        /// amber ever becomes a background.
+        /// Legacy alias for code that previously consumed a stronger wash.
+        /// Points at `firing-line` so existing call sites still resolve.
+        static let firingWashStrong = firingLine
+
+        /// White label paired with `firing` on `button-primary` — the only
+        /// place amber ever becomes a background.
         static let onFiring     = Color.white
 
-        // MARK: - Status (warm-toned, not Crayola)
+        // MARK: - Status (per proto-styles.css `:root`)
 
-        /// `#4F7A3D` — okay/success. Warm-leaning green, never neon.
-        static let ok           = Color(hex: "#4F7A3D")
-        static let okWash       = Color(hex: "#4F7A3D").opacity(0.10)
+        /// `--success` `#16A34A`.
+        static let ok           = Color(hex: "#16A34A")
+        static let okWash       = Color(hex: "#16A34A").opacity(0.10)
 
-        /// `#B45309` — warning. Same hue as `firing-2` but with `warn-wash` semantic.
-        static let warn         = Color(hex: "#B45309")
-        static let warnWash     = Color(hex: "#B45309").opacity(0.10)
+        /// `--warn` `#CA8A04` — gold, distinct from amber so warnings don't
+        /// read as firing moments.
+        static let warn         = Color(hex: "#CA8A04")
+        static let warnWash     = Color(hex: "#CA8A04").opacity(0.10)
 
-        /// `#A0341B` — danger. Warm red — used for error icons + destructive labels only.
-        /// Never used as a background fill; destructive intent is communicated via label
-        /// color + confirmation copy, not loud surfaces.
-        static let danger       = Color(hex: "#A0341B")
-        static let dangerWash   = Color(hex: "#A0341B").opacity(0.10)
+        /// `--danger` `#B91C1C` — error icons + destructive labels only.
+        /// Never used as a background fill.
+        static let danger       = Color(hex: "#B91C1C")
+        static let dangerWash   = Color(hex: "#B91C1C").opacity(0.10)
     }
 
     enum Font {
@@ -232,23 +245,32 @@ enum Kiln {
     }
 
     enum Radius {
-        // MARK: - Primary tokens — `r-N` scale per DESIGN.md
-        static let r1:    CGFloat = 4   // tags, kbd
-        static let r2:    CGFloat = 6   // small chips, controls
-        static let r3:    CGFloat = 8   // buttons, panels
-        static let r4:    CGFloat = 10  // mid-cards
-        static let r5:    CGFloat = 12  // canvas card, settings card, modal
-        static let r6:    CGFloat = 16  // hero card
-        static let pill:  CGFloat = 999 // pill shapes (chips, tags)
+        // MARK: - Primary tokens — 1:1 with `proto-styles.css :root`
+        // The design's actual scale is sm 4 / md 6 / lg 10 / xl 14 — much
+        // tighter than my earlier 4/6/8/10/12/16. Smaller radii read as
+        // paper-and-print-quality, not iOS-rounded.
+        static let rSm:   CGFloat = 4    // `--r-sm` — tags, kbd, small chips
+        static let rMd:   CGFloat = 6    // `--r-md` — buttons, controls
+        static let rLg:   CGFloat = 10   // `--r-lg` — drop zone, cards, modals
+        static let rXl:   CGFloat = 14   // `--r-xl` — sheet, hero panel
+        static let pill:  CGFloat = 999  // pill shapes (chips, tags)
+
+        // MARK: - Source-stability aliases (legacy names → new scale)
+        static let r1: CGFloat = rSm     // 4
+        static let r2: CGFloat = rMd     // 6
+        static let r3: CGFloat = rMd     // 6 (was 8; closest design value)
+        static let r4: CGFloat = rLg     // 10
+        static let r5: CGFloat = rLg     // 10 (was 12; closest design value)
+        static let r6: CGFloat = rXl     // 14 (was 16; closest design value)
 
         // MARK: - Semantic aliases at call sites
-        static let sm: CGFloat = r3      // legacy alias
-        static let md: CGFloat = r5      // legacy alias
-        static let lg: CGFloat = r5      // legacy alias (was 20; closest semantic is r-5)
-        static let control = r3          // inline buttons, stage badges
-        static let card    = r3          // generic cards, panels, sample cards (was r-5; lighter chrome reads as paper)
-        static let modal   = r5          // full-bleed modals, sheets
-        static let hero    = r6          // hero card / canvas wrap
+        static let sm: CGFloat = rSm
+        static let md: CGFloat = rMd
+        static let lg: CGFloat = rLg
+        static let control = rMd          // inline buttons, stage badges
+        static let card    = rLg          // generic cards, panels — design's `--r-lg` 10
+        static let modal   = rXl          // full-bleed modals, sheets
+        static let hero    = rXl          // hero card / canvas wrap
     }
 
     enum Icon {
