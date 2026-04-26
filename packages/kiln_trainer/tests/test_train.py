@@ -140,6 +140,45 @@ def test_line_handler_records_final_save_without_emitting(
     assert h.last_checkpoint == "/tmp/final/adapters.safetensors"
 
 
+def test_line_handler_handles_paths_with_spaces(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Regression: macOS Application Support paths contain spaces. The
+    previous ``\\S+`` regex truncated to ``/Users/tim/Library/Application``,
+    surfacing as ``adapter path does not exist`` in Sample / Export /
+    Growing Model on every real run."""
+    h = _LineHandler(stage="sft")
+    real_save = (
+        "Iter 6: Saved adapter weights to "
+        "/Users/tim/Library/Application Support/Kiln/projects/X/runs/Y/adapters/adapters.safetensors"
+        " and "
+        "/Users/tim/Library/Application Support/Kiln/projects/X/runs/Y/adapters/0000006_adapters.safetensors."
+    )
+    h.handle(real_save)
+    events = _events(capsys.readouterr().out)
+    assert events == [
+        {
+            "event": "checkpoint",
+            "path": "/Users/tim/Library/Application Support/Kiln/projects/X/runs/Y/adapters/adapters.safetensors",
+            "iter": 6,
+        }
+    ]
+    assert h.last_checkpoint == (
+        "/Users/tim/Library/Application Support/Kiln/projects/X/runs/Y/adapters/adapters.safetensors"
+    )
+
+    # Final-weights line with the same kind of path
+    h2 = _LineHandler(stage="sft")
+    h2.handle(
+        "Saved final weights to "
+        "/Users/tim/Library/Application Support/Kiln/proj/runs/Y/adapters/adapters.safetensors."
+    )
+    assert _events(capsys.readouterr().out) == []
+    assert h2.last_checkpoint == (
+        "/Users/tim/Library/Application Support/Kiln/proj/runs/Y/adapters/adapters.safetensors"
+    )
+
+
 def test_line_handler_ignores_unrelated_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
