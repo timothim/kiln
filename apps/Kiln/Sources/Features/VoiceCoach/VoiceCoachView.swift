@@ -66,14 +66,23 @@ struct VoiceCoachView: View {
     @State var model: VoiceCoachModel
     let input: VoiceCoachInput
 
+    /// The Voice Coach is a Post-it card per DESIGN.md `post-it-card`
+    /// component spec — Opus's voice analysis arrives as an "annotation"
+    /// stuck onto the user's run, not as a primary surface. Folded
+    /// corner top-right; surface-paper fill.
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
-            poweredByBadge
-            content
+        ScrollView {
+            PostItCard {
+                VStack(alignment: .leading, spacing: Kiln.Space.s4) {
+                    poweredByBadge
+                    content
+                }
+            }
+            .padding(Kiln.Space.s6)
         }
-        .padding(Kiln.Space.l)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: .infinity)
         .frame(minHeight: 360, idealHeight: 480)
+        .background(Kiln.Palette.paper)
     }
 
     /// "Powered by Claude Opus 4.7" header. Per the directive, this
