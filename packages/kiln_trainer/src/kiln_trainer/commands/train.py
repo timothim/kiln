@@ -39,8 +39,15 @@ _RE_TRAIN_ITER = re.compile(r"^Iter\s+(\d+):\s+Train loss\s+([\d.]+)")
 _RE_VAL_ITER = re.compile(r"^Iter\s+(\d+):\s+Val loss\s+([\d.]+)")
 _RE_LR = re.compile(r"Learning Rate\s+([\d.eE+-]+)")
 _RE_TOKENS_PER_S = re.compile(r"Tokens/sec\s+([\d.]+)")
-_RE_SAVE = re.compile(r"^Iter\s+(\d+):\s+Saved adapter weights to\s+(\S+)")
-_RE_FINAL_SAVE = re.compile(r"^Saved final weights to\s+(\S+?)\.?$")
+# Paths can contain spaces (e.g. ``~/Library/Application Support/Kiln/...``),
+# so capture lazily and stop at either the literal " and " (real mlx_lm
+# 0.21.5 form: ``to {file} and {versioned}.``) or an end-of-line period
+# (test fixtures / future mlx_lm versions). Previously ``\S+`` truncated
+# at the first space, which surfaced as
+# ``adapter path does not exist: /Users/tim/Library/Application``
+# in Sample / Export / Growing Model.
+_RE_SAVE = re.compile(r"^Iter\s+(\d+):\s+Saved adapter weights to (.+?)(?: and |\.\s*$)")
+_RE_FINAL_SAVE = re.compile(r"^Saved final weights to (.+?)\.?\s*$")
 
 
 def run(args: argparse.Namespace) -> int:
