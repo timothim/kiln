@@ -91,6 +91,21 @@ def run(args: argparse.Namespace) -> int:
 
     runtime.log("dataset prepared", **{f"n_{k}": v for k, v in counts.items()})
 
+    # mlx_lm.lora's iterate_batches raises if either split is smaller than
+    # ``batch_size``. Cap batch_size to the smallest split (clamped >=1) so
+    # tiny demo corpora don't crash with
+    # ``Dataset must have at least batch_size=N examples but only has M``.
+    smallest_split = min(counts.get("train", 0), counts.get("valid", 0))
+    if smallest_split > 0 and batch_size > smallest_split:
+        original = batch_size
+        batch_size = max(1, smallest_split)
+        runtime.log(
+            "batch-size lowered for small corpus",
+            requested=original,
+            effective=batch_size,
+            **{f"n_{k}": v for k, v in counts.items()},
+        )
+
     # (4) compute iters
     if args.iters is not None:
         iters = max(1, args.iters)
@@ -385,6 +400,12 @@ def _build_cmd(
         base = [sys.executable, str(args.trainer_entry)]
     else:
         base = [sys.executable, "-m", args.trainer_module]
+    # mlx_lm.lora prints a "Iter N: Train loss ..." line every
+    # ``--steps-per-report`` iterations (default 10). On a small demo run
+    # of e.g. 8 iters that means zero progress lines until iter 10 — the
+    # Kiln UI would jump from 0% straight to done. Aim for ~10 progress
+    # ticks per run, clamped to >=1.
+    steps_per_report = max(1, min(10, iters // 10 if iters >= 10 else 1))
     return base + [
         "--model", args.model,
         "--train",
@@ -397,6 +418,7 @@ def _build_cmd(
         "--learning-rate", str(learning_rate),
         "--num-layers", str(lora_layers),
         "--save-every", str(save_every if save_every is not None else args.save_every),
+        "--steps-per-report", str(steps_per_report),
         "--val-batches", str(args.val_batches),
         "--max-seq-length", str(max_seq_length),
         "--grad-checkpoint",

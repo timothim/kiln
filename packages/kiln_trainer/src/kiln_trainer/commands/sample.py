@@ -202,9 +202,15 @@ def _build_cmd(*, args: argparse.Namespace, prompt_text: str) -> list[str]:
         base = [sys.executable, str(args.generator_entry)]
     else:
         base = [sys.executable, "-m", args.generator_module]
+    # mlx_lm.generate expects ``--adapter-path`` to be a directory
+    # containing ``adapters.safetensors`` + ``adapter_config.json``.
+    # Callers (sample-compare, the .done event consumer) often hand us
+    # the file itself; resolve to its parent dir.
+    adapter_arg = Path(args.adapter_path)
+    adapter_dir = adapter_arg.parent if adapter_arg.is_file() else adapter_arg
     return base + [
         "--model", args.model,
-        "--adapter-path", str(args.adapter_path),
+        "--adapter-path", str(adapter_dir),
         "--prompt", prompt_text,
         "--max-tokens", str(args.max_tokens),
         "--temp", str(args.temp),

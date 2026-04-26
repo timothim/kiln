@@ -183,8 +183,14 @@ def _run_inline_mlx(*, args: argparse.Namespace, prompts: list[dict[str, str]]) 
         return 1
 
     triggered = runtime.install_sigterm_handler()
+    # mlx_lm.utils.load(adapter_path=...) wants a DIRECTORY containing
+    # ``adapters.safetensors`` + ``adapter_config.json``. Callers (the
+    # train post-checkpoint hook, sample-compare) pass the
+    # ``adapters.safetensors`` file itself; resolve to its parent dir.
+    adapter_arg = Path(args.adapter_path)
+    adapter_dir = adapter_arg.parent if adapter_arg.is_file() else adapter_arg
     try:
-        model, tokenizer = load(args.model, adapter_path=str(args.adapter_path))
+        model, tokenizer = load(args.model, adapter_path=str(adapter_dir))
     except Exception as exc:
         events.emit(
             events.error(
