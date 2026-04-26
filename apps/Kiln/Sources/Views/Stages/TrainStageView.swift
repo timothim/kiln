@@ -168,16 +168,23 @@ private struct TrainingRunningView: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.l) {
-            StageHeader(
-                title: project.name,
-                subtitle: subtitle,
-                stage: project.stage
-            )
+        VStack(alignment: .leading, spacing: Kiln.Space.s5) {
+            // Per the design's `training` surface (`proto-surfaces.js:730-734`):
+            // serif h2 "Growing Model" + chip-firing pulse + mono LoRA params
+            // pinned to the right of the header.
+            HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.s3) {
+                Text("Growing Model")
+                    .font(.system(size: 28, weight: .medium, design: .serif))
+                    .foregroundStyle(Kiln.Palette.onSurface)
+                Chip(text: model.isWarmingUp ? "Warming up" : "Firing", isFiring: true)
+                Spacer(minLength: 0)
+                Text(loraParamsString)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+            }
 
             TrainingProgressCapsule(progress: fractionComplete)
                 .frame(maxWidth: 460)
-                .padding(.top, Kiln.Space.xs)
 
             HStack(spacing: Kiln.Space.m) {
                 Stat(label: "Base", value: "Qwen2.5-\(project.modelSize.displayName)")
@@ -188,14 +195,15 @@ private struct TrainingRunningView: View {
             .frame(maxWidth: 640)
 
             if !model.lossHistory.isEmpty {
-                VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-                    Text("Loss")
-                        .font(Kiln.Font.caption)
-                        .foregroundStyle(.tertiary)
+                VStack(alignment: .leading, spacing: Kiln.Space.s2) {
+                    Text("LOSS · LAST \(model.lossHistory.count)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .tracking(0.4)
+                        .foregroundStyle(Kiln.Palette.onSurface3)
                     LossSparkline(samples: model.lossHistory)
                         .frame(maxWidth: 640)
                 }
-                .padding(.top, Kiln.Space.xs)
+                .padding(.top, Kiln.Space.s2)
             }
 
             GrowingModelPanelView(
@@ -235,6 +243,16 @@ private struct TrainingRunningView: View {
             return "Warming up. Loss numbers appear shortly."
         }
         return "Teaching your model."
+    }
+
+    /// Mono LoRA params line per the design's `training` header. Echoes
+    /// the prototype's "SFT · rank 16 · alpha 32 · 2 epochs" string with
+    /// values pulled from the active TrainingRequest's hyperparameters.
+    private var loraParamsString: String {
+        let rank = 16
+        let alpha = 32
+        let epochs = model.totalEpochs
+        return "SFT · rank \(rank) · alpha \(alpha) · \(epochs) \(epochs == 1 ? "epoch" : "epochs")"
     }
 
     private var fractionComplete: Double {
