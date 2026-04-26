@@ -82,31 +82,49 @@ struct VoiceMirrorView: View {
         .padding(Kiln.Space.l)
     }
 
+    /// Per the design's `mirror` surface (`proto-surfaces.js:1482-1487`):
+    /// sunken `pb-bar` with a mono "PROMPT" label, the input itself, and
+    /// generation meta on the right (temp / top-p / candidates).
     private var promptRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.m) {
-            TextField("Ask a question to hear each voice...", text: $model.prompt, axis: .vertical)
+        HStack(alignment: .center, spacing: Kiln.Space.s3) {
+            Text("PROMPT")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .tracking(0.4)
+                .foregroundStyle(Kiln.Palette.onSurface3)
+            TextField("Ask a question to see your voice come through…",
+                      text: $model.prompt, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(Kiln.Font.body)
+                .font(.system(size: 16, design: .serif))
+                .foregroundStyle(Kiln.Palette.onSurface)
                 .lineLimit(1...3)
-                .padding(.horizontal, Kiln.Space.m)
-                .padding(.vertical, Kiln.Space.xs)
-                .background {
-                    RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                        .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
-                }
                 .accessibilityLabel("Voice mirror prompt")
-
+            Spacer(minLength: Kiln.Space.s4)
+            Text("temp 0.7 · top-p 0.92 · 4 candidates")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Kiln.Palette.onSurface3)
             Button {
                 model.generate()
             } label: {
-                Text(model.isGenerating ? "Generating..." : "Generate")
-                    .font(Kiln.Font.body)
-                    .padding(.horizontal, Kiln.Space.xs)
+                Text(model.isGenerating ? "Generating…" : "Generate")
+                    .font(Kiln.Font.label.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Kiln.Space.s3)
+                    .padding(.vertical, Kiln.Space.s2)
+                    .background {
+                        RoundedRectangle(cornerRadius: Kiln.Radius.rSm,
+                                         style: .continuous)
+                            .fill(Kiln.Palette.firing)
+                    }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .controlSize(.regular)
-            .disabled(model.prompt.trimmingCharacters(in: .whitespaces).isEmpty || model.isGenerating)
+            .buttonStyle(.plain)
+            .disabled(model.prompt.trimmingCharacters(in: .whitespaces).isEmpty
+                      || model.isGenerating)
+        }
+        .padding(.horizontal, Kiln.Space.s4)
+        .padding(.vertical, Kiln.Space.s3)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.rMd, style: .continuous)
+                .fill(Kiln.Palette.surfaceSunken)
         }
     }
 
@@ -222,33 +240,74 @@ private struct VoiceMirrorColumn: View {
         }
     }
 
+    /// Per the design's `mirror` columns (`proto-surfaces.js:1496-1503`):
+    /// each column carries a name + stage badge ("stage 0", "stage 1",
+    /// "stage 2", "stage —" for ground truth) plus a sub-line (model id)
+    /// and a tone description. SFT+DPO column carries an EmberDot to
+    /// signal "the trained voice is alive."
     private var header: some View {
-        HStack(spacing: Kiln.Space.s2) {
-            // Per design package: the kiln-noor "alive" eyebrow uses an
-            // EmberDot for the SFT+DPO column (the trained voice column).
-            // Other model columns get a graded grey identity dot.
-            if reflection.source == .sftPlusDpo {
-                EmberDot(size: 6)
-            } else {
-                Circle()
-                    .fill(Kiln.Palette.onSurface.opacity(reflection.source.indicatorOpacity))
-                    .frame(width: 6, height: 6)
-                    .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: Kiln.Space.s1) {
+            HStack(spacing: Kiln.Space.s2) {
+                if reflection.source == .sftPlusDpo {
+                    EmberDot(size: 6)
+                } else {
+                    Circle()
+                        .fill(Kiln.Palette.onSurface
+                              .opacity(reflection.source.indicatorOpacity))
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                Text(reflection.source.rawValue.uppercased())
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+                Spacer(minLength: 0)
+                Text(stageBadge)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Kiln.Palette.onSurface4)
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: Kiln.Icon.small - 3, weight: .semibold))
+                        .foregroundStyle(Kiln.Palette.firing)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        .accessibilityHidden(true)
+                }
             }
-            Text(reflection.source.rawValue.uppercased())
-                .font(Kiln.Font.eyebrow)
-                .kerning(0.4)
+            Text(modelSubLabel)
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Kiln.Palette.onSurface3)
-            Spacer(minLength: 0)
-            if isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: Kiln.Icon.small - 3, weight: .semibold))
-                    .foregroundStyle(Kiln.Palette.firing)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                    .accessibilityHidden(true)
-            }
+            Text(toneLabel)
+                .font(Kiln.Font.caption)
+                .foregroundStyle(Kiln.Palette.onSurface2)
         }
         .animation(Kiln.Motion.microToggle, value: isPinned)
+    }
+
+    private var stageBadge: String {
+        switch reflection.source {
+        case .baseQwen:    return "stage 0"
+        case .sftOnly:     return "stage 1"
+        case .sftPlusDpo:  return "stage 2"
+        case .userAnswer:  return "stage —"
+        }
+    }
+
+    private var modelSubLabel: String {
+        switch reflection.source {
+        case .baseQwen:    return "qwen3-7b · no fine-tune"
+        case .sftOnly:     return "+ supervised fine-tune"
+        case .sftPlusDpo:  return "+ direct preference tuning"
+        case .userAnswer:  return "ground truth"
+        }
+    }
+
+    private var toneLabel: String {
+        switch reflection.source {
+        case .baseQwen:    return "polite assistant"
+        case .sftOnly:     return "your topics, generic shape"
+        case .sftPlusDpo:  return "your voice — recognizable"
+        case .userAnswer:  return "you, in the wild"
+        }
     }
 
     @ViewBuilder
