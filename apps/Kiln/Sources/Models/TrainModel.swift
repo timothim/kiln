@@ -104,6 +104,36 @@ final class TrainModel {
         let arrivedAt: Date
     }
 
+    /// Audit post-merge: rolling event log streamed into ``LogsPanel``.
+    /// Replaces the old hardcoded canned content. Capped so a long run
+    /// doesn't grow the array unbounded (keeps latest 200).
+    var eventLog: [LogLine] = []
+    private let eventLogCap: Int = 200
+
+    struct LogLine: Identifiable, Hashable {
+        let id = UUID()
+        let timestamp: Date
+        let kind: Kind
+        let text: String
+
+        enum Kind: Hashable {
+            case ready
+            case progress
+            case sample
+            case checkpoint
+            case advisor
+            case done
+            case error
+        }
+    }
+
+    private func appendLog(_ kind: LogLine.Kind, _ text: String) {
+        eventLog.append(LogLine(timestamp: Date(), kind: kind, text: text))
+        if eventLog.count > eventLogCap {
+            eventLog.removeFirst(eventLog.count - eventLogCap)
+        }
+    }
+
     // Private state.
     private var task: Task<Void, Never>?
     private var request: TrainingRequest?
@@ -178,6 +208,7 @@ final class TrainModel {
         growingModelSamples = []
         totalEpochs = 1
         advisorObservations = []
+        eventLog = []
         request = nil
         startTime = nil
     }
@@ -199,6 +230,9 @@ final class TrainModel {
         self.growingModelSamples = GrowingModelPrompts.defaults.map { prompt in
             PromptSample(prompt: prompt.text)
         }
+        self.advisorObservations = []
+        self.eventLog = []
+        appendLog(.ready, "spawning trainer · \(request.model)")
         if let iters = request.itersOverride, iters > lossHistoryCap {
             self.sampleStride = max(1, iters / lossHistoryCap)
         } else {
@@ -233,12 +267,21 @@ final class TrainModel {
 
     private func apply(_ event: TrainingEvent) {
         switch event {
-        case .ready(let version, _):
+        case .ready(let version, let mlx):
             sidecarVersion = version
+            appendLog(.ready, "sidecar ready · mlx \(mlx)")
 
         case .progress(let progress):
             currentProgress = progress
-            if progress.iter >= etaEstimator.warmupIters { isWarmingUp = false }
+            // Audit post-merge: ``isWarmingUp`` previously waited for
+            // ``etaEstimator.warmupIters`` (20). On a short run (10
+            // iters) it never flipped and the UI read "Warming up.
+            // Loss numbers appear shortly." for the entire training
+            // session. The ETA estimator still has its own 20-iter
+            // warmup for stable EMA — that's a separate concern. The
+            // UI's "warming up" copy means "no data yet" → flip on
+            // first progress event.
+            if isWarmingUp { isWarmingUp = false }
 
             // Sparkline history (sampled if the run is long).
             if progress.iter.isMultiple(of: max(1, sampleStride)) || progress.valLoss != nil {
@@ -263,6 +306,21 @@ final class TrainModel {
                     totalIters: total
                 )
             }
+            // Log every Nth iter or any val-loss line so the LogsPanel
+            // doesn't get spammed on a long run but the demo viewer
+            // still sees rapid updates.
+            let logStride = max(1, sampleStride)
+            if progress.iter.isMultiple(of: logStride) || progress.valLoss != nil {
+                let lossStr = String(format: "%.3f", progress.loss)
+                var line = "iter \(progress.iter)  loss \(lossStr)"
+                if let tps = progress.tokensPerSec {
+                    line += "  · \(Int(tps)) tok/s"
+                }
+                if let val = progress.valLoss {
+                    line += "  · val \(String(format: "%.3f", val))"
+                }
+                appendLog(.progress, line)
+            }
 
         case .sample(let sample):
             guard let idx = Self.promptIndex[sample.promptID],
@@ -280,9 +338,17 @@ final class TrainModel {
                 isUpdating: false,
                 stylizationScore: stylizationProxy(iter: sample.iter)
             )
+            // First 60 chars of the new completion — gives the viewer
+            // a glimpse of the voice settling in without quoting full
+            // paragraphs into the log stream.
+            let preview = sample.completion
+                .replacingOccurrences(of: "\n", with: " ")
+                .prefix(60)
+            appendLog(.sample, "sample · iter \(sample.iter) · \(sample.promptID): \(preview)…")
 
         case .checkpoint(let path, let iter, _):
             lastCheckpoint = (url: path, iter: iter)
+            appendLog(.checkpoint, "checkpoint saved · iter \(iter)")
 
         case .advisorObservation(let iter, let content, let modelID):
             advisorObservations.append(AdvisorObservation(
@@ -291,6 +357,7 @@ final class TrainModel {
                 modelID: modelID,
                 arrivedAt: Date()
             ))
+            appendLog(.advisor, "advisor (\(modelID)) iter \(iter): \(content)")
 
         case .done(let artifact, let interrupted):
             let now = Date()
@@ -300,6 +367,7 @@ final class TrainModel {
             let reachedFirstCheckpoint = lastCheckpoint != nil
 
             if interrupted && !reachedFirstCheckpoint {
+                appendLog(.error, "cancelled before first checkpoint")
                 status = .failed(.cancelled)
                 return
             }
@@ -313,9 +381,14 @@ final class TrainModel {
                 interrupted: interrupted,
                 partialCheckpoint: partial
             )
+            appendLog(
+                .done,
+                "done · \(report.itersCompleted) iters · \(Self.formatDuration(wallClock))"
+            )
             status = .completed(report)
 
         case .error(let error):
+            appendLog(.error, "error · \(String(describing: error))")
             status = .failed(.fromTraining(error))
         }
     }
@@ -381,5 +454,14 @@ extension TrainModel {
         guard total > 0 else { return 0 }
         let ratio = Double(min(iter, total)) / Double(total)
         return max(0, min(100, ratio * 100))
+    }
+
+    /// Format a duration the same way the Complete stage does, so the
+    /// log line and the stat tile read the same number on done.
+    static func formatDuration(_ seconds: Double) -> String {
+        if seconds < 60 { return String(format: "%.1fs", seconds) }
+        let m = Int(seconds) / 60
+        let s = Int(seconds) % 60
+        return "\(m)m \(s)s"
     }
 }

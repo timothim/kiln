@@ -54,6 +54,8 @@ private struct SettingsRoot: View {
             BehindTheScenesView()
                 .tabItem { Label("About Opus", systemImage: "sparkles") }
         }
-        .frame(minWidth: 560, minHeight: 600)
+        // Audit post-merge: widen so the four tab labels never wrap and
+        // the Behind-the-Scenes long-form copy doesn't compress.
+        .frame(minWidth: 720, idealWidth: 820, minHeight: 640, idealHeight: 720)
     }
 }

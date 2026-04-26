@@ -34,7 +34,7 @@ struct DetailView: View {
         case .preparing:
             PrepareDetailView()
         case .training:
-            LogsPanel(project: project)
+            LogsPanel(project: project, trainModel: model?.trainModel)
         case .complete:
             CompleteDetailView(
                 project: project,

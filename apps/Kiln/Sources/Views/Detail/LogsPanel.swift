@@ -1,27 +1,20 @@
 import SwiftUI
 
-/// Right pane during `.training`. Streaming log entries in monospace. M3 uses
-/// a typed placeholder list shaped like the IPC progress events defined in
-/// SPEC §11; M5 will replace the source without touching the view.
+/// Right pane during `.training`. Streams real events from the live
+/// ``TrainModel`` (post-merge audit fix — was a hardcoded canned list).
+/// When no TrainModel is attached (between sessions, in previews), it
+/// shows a quiet idle state instead of fake numbers.
 struct LogsPanel: View {
     let project: Project
+    /// Live training model — when non-nil, the panel binds to its
+    /// ``eventLog`` and re-renders as new events stream in.
+    var trainModel: TrainModel?
 
-    struct Entry: Identifiable, Hashable {
-        let id: Int
-        let time: String
-        let text: String
-    }
-
-    private var entries: [Entry] {
-        [
-            Entry(id: 0, time: "00:00:02", text: "sidecar ready · mlx 0.16.0"),
-            Entry(id: 1, time: "00:00:03", text: "sft start · qwen2.5-\(project.modelSize.displayName.lowercased())"),
-            Entry(id: 2, time: "00:00:42", text: "iter 50    loss 1.84   tokens/s 3,200"),
-            Entry(id: 3, time: "00:01:18", text: "iter 100   loss 1.52   tokens/s 3,180"),
-            Entry(id: 4, time: "00:01:54", text: "checkpoint saved · iter 100"),
-            Entry(id: 5, time: "00:02:31", text: "iter 150   loss 1.34   tokens/s 3,210"),
-        ]
-    }
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 
     var body: some View {
         ZStack {
@@ -45,33 +38,106 @@ struct LogsPanel: View {
 
             Spacer(minLength: 0)
 
-            Text("live")
-                .font(Kiln.Font.caption)
-                .foregroundStyle(.secondary)
+            statusPill
         }
         .padding(.horizontal, Kiln.Space.m)
         .padding(.vertical, Kiln.Space.m)
     }
 
+    private var statusPill: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isLive ? Color.green : Color.secondary.opacity(0.5))
+                .frame(width: 6, height: 6)
+            Text(isLive ? "live" : "idle")
+                .font(Kiln.Font.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var isLive: Bool {
+        guard let trainModel else { return false }
+        if case .running = trainModel.status { return true }
+        return false
+    }
+
+    @ViewBuilder
     private var logList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Kiln.Space.xs - 2) {
-                ForEach(entries) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.xs) {
-                        Text(entry.time)
-                            .font(Kiln.Font.mono)
-                            .foregroundStyle(.tertiary)
-                        Text(entry.text)
-                            .font(Kiln.Font.mono)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+        ScrollViewReader { proxy in
+            ScrollView {
+                if let entries = trainModel?.eventLog, !entries.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(entries) { entry in
+                            row(for: entry)
+                                .id(entry.id)
+                        }
                     }
+                    .padding(.horizontal, Kiln.Space.m)
+                    .padding(.vertical, Kiln.Space.m)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .onChange(of: entries.count) { _, _ in
+                        if let last = entries.last {
+                            withAnimation(Kiln.Motion.standard) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                } else {
+                    emptyState
                 }
             }
-            .padding(.horizontal, Kiln.Space.m)
-            .padding(.vertical, Kiln.Space.m)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: Kiln.Space.xs) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("Log entries appear here once training starts.")
+                .font(Kiln.Font.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Kiln.Space.xl)
+    }
+
+    private func row(for entry: TrainModel.LogLine) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.xs) {
+            Text(Self.timeFormatter.string(from: entry.timestamp))
+                .font(Kiln.Font.mono)
+                .foregroundStyle(.tertiary)
+            Text(symbol(for: entry.kind))
+                .font(Kiln.Font.mono)
+                .foregroundStyle(color(for: entry.kind))
+                .frame(width: 14, alignment: .leading)
+            Text(entry.text)
+                .font(Kiln.Font.mono)
+                .foregroundStyle(color(for: entry.kind).opacity(entry.kind == .error ? 1.0 : 0.85))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func symbol(for kind: TrainModel.LogLine.Kind) -> String {
+        switch kind {
+        case .ready:      return "▸"
+        case .progress:   return "·"
+        case .sample:     return "◇"
+        case .checkpoint: return "■"
+        case .advisor:    return "✦"
+        case .done:       return "✓"
+        case .error:      return "⚠"
+        }
+    }
+
+    private func color(for kind: TrainModel.LogLine.Kind) -> Color {
+        switch kind {
+        case .ready, .progress, .sample, .checkpoint, .advisor, .done:
+            return .secondary
+        case .error:
+            return .red
         }
     }
 }

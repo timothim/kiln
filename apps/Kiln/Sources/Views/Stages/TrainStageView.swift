@@ -282,9 +282,9 @@ private struct TrainingCompletedView: View {
             )
 
             HStack(spacing: Kiln.Space.m) {
-                Stat(label: "Iterations", value: "\(report.itersCompleted)")
-                Stat(label: "Final loss", value: report.finalLoss.map { String(format: "%.2f", $0) } ?? "—")
-                Stat(label: "Wall clock", value: formatDuration(report.wallClockSec))
+                Stat(label: "Iters", value: "\(report.itersCompleted)")
+                Stat(label: "Loss", value: report.finalLoss.map { String(format: "%.2f", $0) } ?? "—")
+                Stat(label: "Time", value: formatDuration(report.wallClockSec))
                 Stat(label: "Adapter", value: report.adapterURL.lastPathComponent)
             }
             .frame(maxWidth: 640)

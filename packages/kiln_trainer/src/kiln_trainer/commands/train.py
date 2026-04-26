@@ -98,6 +98,20 @@ def run(args: argparse.Namespace) -> int:
         iters_per_epoch = max(1, counts["train"] // batch_size)
         iters = max(10, epochs * iters_per_epoch)
 
+    # Demo-friendly checkpoint cadence. mlx_lm.lora 0.21.5 only writes
+    # ``adapters.safetensors`` at ``save-every`` milestones — it does not
+    # auto-save the final state. With the default save-every=50 and a
+    # small corpus (iters=10–40) the user gets nothing on disk and the
+    # downstream Sample / Export / Chat all 404. Cap save-every so we
+    # always produce 3 checkpoints minimum, plus a guaranteed last one.
+    effective_save_every = min(args.save_every, max(2, iters // 3))
+    runtime.log(
+        "save-every cadence",
+        requested=args.save_every,
+        effective=effective_save_every,
+        iters=iters,
+    )
+
     # (5) YAML config (rank/alpha/keys are YAML-only in mlx-lm 0.21.*)
     config_path = run_dir / "lora_config.yaml"
     config_path.write_text(
@@ -120,6 +134,7 @@ def run(args: argparse.Namespace) -> int:
         learning_rate=learning_rate,
         lora_layers=lora_layers,
         max_seq_length=max_seq_length,
+        save_every=effective_save_every,
     )
     runtime.log("spawning trainer", iters=iters, batch_size=batch_size, rank=rank, alpha=alpha)
 
@@ -360,6 +375,7 @@ def _build_cmd(
     learning_rate: float,
     lora_layers: int,
     max_seq_length: int,
+    save_every: int | None = None,
 ) -> list[str]:
     if args.trainer_entry:
         base = [sys.executable, str(args.trainer_entry)]
@@ -376,7 +392,7 @@ def _build_cmd(
         "--batch-size", str(batch_size),
         "--learning-rate", str(learning_rate),
         "--num-layers", str(lora_layers),
-        "--save-every", str(args.save_every),
+        "--save-every", str(save_every if save_every is not None else args.save_every),
         "--val-batches", str(args.val_batches),
         "--max-seq-length", str(max_seq_length),
         "--grad-checkpoint",
