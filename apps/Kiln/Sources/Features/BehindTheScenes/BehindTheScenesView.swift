@@ -30,27 +30,26 @@ struct BehindTheScenesView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        .background(Kiln.Palette.paper)
     }
 
     // MARK: - Hero
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-            HStack(spacing: Kiln.Space.xs) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(.purple)
-                    .accessibilityHidden(true)
-                Text("How Opus 4.7 powers Kiln")
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Kiln.Space.s3) {
+            HStack(spacing: Kiln.Space.s2) {
+                EmberDot(size: 7)
+                Text("HOW OPUS 4.7 POWERS KILN")
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
             }
             Text("Behind the Scenes")
                 .font(Kiln.Font.display)
+                .foregroundStyle(Kiln.Palette.onSurface)
             Text("Kiln looks like a small native macOS app, and at runtime that's all it is: SwiftUI, MLX, your local files. The story underneath is bigger — Opus 4.7 wrote most of Kiln, distilled three classifiers Kiln ships locally, and runs as an opt-in advisor when you want a second brain. Here's the receipt.")
                 .font(Kiln.Font.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Kiln.Palette.onSurface2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
