@@ -25,22 +25,20 @@ struct DatasetDoctorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.l) {
-            StageHeader(
-                title: project.name,
-                subtitle: subtitle,
-                stage: project.stage
-            )
+        VStack(alignment: .leading, spacing: Kiln.Space.s7) {
+            doctorHeader
             funnelRow
             qualitySection
             if report.filesSkipped.count > 0 {
                 skippedFooter
             }
             Spacer(minLength: 0)
-            ctaRow
+            finalCard
         }
-        .padding(Kiln.Space.xl)
+        .padding(.horizontal, 56)
+        .padding(.vertical, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Kiln.Palette.paper)
         .sheet(isPresented: deepCurationIsPresented) {
             if let model = deepCurationModel {
                 DeepCurationSheet(
@@ -48,6 +46,100 @@ struct DatasetDoctorView: View {
                     onClose: { onCloseDeepCuration?() }
                 )
             }
+        }
+    }
+
+    /// Per the design's `pipeline` surface (`proto-surfaces.js:238-243`):
+    /// serif `Dataset Doctor` h1 + `chip.firing` with pulse + `path-chip`
+    /// for the source folder.
+    private var doctorHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.s3) {
+            Text("Dataset Doctor")
+                .font(.system(size: 28, weight: .medium, design: .serif))
+                .foregroundStyle(Kiln.Palette.onSurface)
+            Chip(text: "Done", isFiring: true)
+            if let folder = project.folderName {
+                Text("~/\(folder)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(Kiln.Palette.surface2)
+                    }
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(Kiln.Palette.hairline, lineWidth: 0.5)
+                    }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Final summary card per `proto-surfaces.js:278-283` + `.s-pipeline
+    /// .final` CSS — `surface` fill, `firing-line` border, big serif numeric,
+    /// "of N chunks ready · X%", spacer, primary Continue button.
+    private var finalCard: some View {
+        let kept = classifierGateActive
+            ? report.chunksAfterClassifierQuality
+            : report.chunksAfterQuality
+        let total = report.chunksBeforeDedup
+        let pct = total > 0 ? Int((Double(kept) / Double(total)) * 100) : 0
+
+        return HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.s4) {
+            Text(kept, format: .number)
+                .font(.system(size: 36, weight: .medium, design: .serif))
+                .foregroundStyle(Kiln.Palette.firing2)
+                .monospacedDigit()
+            Text("of ")
+                .font(Kiln.Font.label)
+                .foregroundStyle(Kiln.Palette.onSurface2)
+            + Text(total, format: .number)
+                .font(Kiln.Font.label)
+                .foregroundStyle(Kiln.Palette.onSurface2)
+                .monospacedDigit()
+            + Text(" chunks ready · ")
+                .font(Kiln.Font.label)
+                .foregroundStyle(Kiln.Palette.onSurface2)
+            + Text("\(pct)%")
+                .font(Kiln.Font.label.weight(.medium))
+                .foregroundStyle(Kiln.Palette.onSurface)
+            Spacer()
+            HStack(spacing: Kiln.Space.s3) {
+                Button("Drop another folder", action: onReset)
+                    .buttonStyle(.bordered)
+                if let onOpenDeepCuration {
+                    Button("Run Deep Curation", action: onOpenDeepCuration)
+                        .buttonStyle(.bordered)
+                }
+                Button(action: onContinue) {
+                    Text("Continue")
+                        .font(Kiln.Font.label.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Kiln.Space.s4)
+                        .padding(.vertical, Kiln.Space.s2)
+                        .background {
+                            RoundedRectangle(cornerRadius: Kiln.Radius.rSm,
+                                             style: .continuous)
+                                .fill(Kiln.Palette.firing)
+                        }
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityLabel("Continue to training")
+            }
+        }
+        .padding(.horizontal, Kiln.Space.s6)
+        .padding(.vertical, Kiln.Space.s5)
+        .frame(maxWidth: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: Kiln.Radius.rLg, style: .continuous)
+                .fill(Kiln.Palette.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Kiln.Radius.rLg, style: .continuous)
+                .strokeBorder(Kiln.Palette.firingLine, lineWidth: 1)
         }
     }
 
@@ -114,33 +206,4 @@ struct DatasetDoctorView: View {
             .foregroundStyle(.tertiary)
     }
 
-    private var ctaRow: some View {
-        HStack(spacing: Kiln.Space.sm) {
-            Button("Drop another folder", action: onReset)
-            Spacer()
-            if let onOpenDeepCuration {
-                Button(action: onOpenDeepCuration) {
-                    Label("Run Deep Curation", systemImage: "wand.and.stars")
-                        .font(Kiln.Font.body)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .accessibilityHint("Run a Claude Opus Managed Agent over your corpus to remove forwarded threads, copy-pasted external content, and voice-inconsistent samples.")
-            }
-            Button(action: onContinue) {
-                Label("Continue to training", systemImage: "arrow.right")
-                    .font(Kiln.Font.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, Kiln.Space.m)
-                    .padding(.vertical, Kiln.Space.xs)
-                    .background(
-                        RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                            .fill(Kiln.Palette.firing)
-                    )
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.defaultAction)
-            .accessibilityLabel("Continue to training")
-        }
-    }
 }

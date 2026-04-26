@@ -85,24 +85,31 @@ struct VoiceCoachView: View {
         .background(Kiln.Palette.paper)
     }
 
-    /// "Powered by Claude Opus 4.7" header. Per the directive, this
-    /// is the user-visible signature on every cloud-Opus surface. In
-    /// local mode it rebadges to "Running locally with Qwen2.5".
+    /// Per the design's `coach` surface (`proto-surfaces.js:1755-1768`):
+    /// mono "FROM YOUR COACH" eyebrow with dot separators + meta line,
+    /// then a 32pt serif "Your voice, in three things." headline, then
+    /// a body dek with the model name highlighted.
     private var poweredByBadge: some View {
-        HStack(spacing: Kiln.Space.xs) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.purple)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Kiln.Space.s3) {
+            HStack(spacing: Kiln.Space.s2) {
+                EmberDot(size: 6)
+                Text("FROM YOUR COACH")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .tracking(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+                Text("·")
+                    .foregroundStyle(Kiln.Palette.onSurface4)
                 Text(badgeTitle)
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                Text("Voice Coach")
-                    .font(Kiln.Font.title)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .tracking(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            Text("Your voice, in three things.")
+                .font(.system(size: 32, weight: .medium, design: .serif))
+                .tracking(-0.4)
+                .foregroundStyle(Kiln.Palette.onSurface)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
