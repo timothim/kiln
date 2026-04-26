@@ -8,14 +8,19 @@ struct StageRouterView: View {
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.regularMaterial)
+            // Paper canvas — DESIGN.md "stage" sits directly on `--paper`.
+            // No regularMaterial: paper is light enough that the system blur
+            // would just grey it out.
+            Kiln.Palette.paper
                 .ignoresSafeArea()
 
             if let project = model.selectedProject {
-                stage(for: project)
-                    .id("\(project.id)-\(project.stage.rawValue)")
-                    .transition(Kiln.Motion.stageTransition)
+                VStack(spacing: 0) {
+                    contextBadge(for: project)
+                    stage(for: project)
+                        .id("\(project.id)-\(project.stage.rawValue)")
+                        .transition(Kiln.Motion.stageTransition)
+                }
             } else {
                 EmptyState(
                     systemImage: "sidebar.left",
@@ -25,6 +30,59 @@ struct StageRouterView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Mono context badge that sits above the active stage — DESIGN.md
+    /// title-bar pattern adapted for the in-window center pane.
+    /// Reads as "TRAINING · iter 200/500" or "READY" depending on stage.
+    private func contextBadge(for project: Project) -> some View {
+        HStack(spacing: Kiln.Space.s2) {
+            Text(project.stage.label.uppercased())
+                .font(Kiln.Font.eyebrow)
+                .kerning(0.4)
+                .foregroundStyle(Kiln.Palette.onSurface3)
+            if let detail = stageBadgeDetail(for: project) {
+                Text("·")
+                    .font(Kiln.Font.eyebrow)
+                    .foregroundStyle(Kiln.Palette.onSurface4)
+                Text(detail)
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Kiln.Space.s6)
+        .padding(.vertical, Kiln.Space.s3)
+        .frame(maxWidth: .infinity)
+        .background(Kiln.Palette.paper)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Kiln.Palette.hairline)
+                .frame(height: 1)
+        }
+    }
+
+    private func stageBadgeDetail(for project: Project) -> String? {
+        switch project.stage {
+        case .readyToDrop: return nil
+        case .preparing:
+            if let total = project.totalChunks, total > 0 {
+                return "\(total.formatted()) chunks"
+            }
+            return nil
+        case .training:
+            if let trainModel = model.trainModel,
+               case .running = trainModel.status,
+               let progress = trainModel.currentProgress {
+                let total = trainModel.totalIters ?? 0
+                return total > 0
+                    ? "iter \(progress.iter)/\(total)"
+                    : "iter \(progress.iter)"
+            }
+            return nil
+        case .complete: return project.name
+        }
     }
 
     @ViewBuilder
