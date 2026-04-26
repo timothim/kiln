@@ -4,7 +4,7 @@ For the Cerebral Valley submission form. Pick the version that fits the field's 
 
 ---
 
-## Primary version (155 words — sweet spot in 100-200 range)
+## Primary version (149 words — sweet spot in 100-200 range)
 
 LLMs are quietly flattening everyone's writing toward the average voice of the internet. Kiln inverts the loop. It's a native macOS app that fine-tunes a small local LLM on **your own writing** in twenty minutes on a MacBook — emails, notes, messages, Markdown — then exposes the trained voice as an MCP server callable by Claude.app.
 
@@ -12,11 +12,11 @@ Three classifiers ship inside the app: quality, preference, and style. Each was 
 
 Your data never leaves the laptop. Distilled judgment does. And Claude.app can now write in your voice without ever seeing your prompt.
 
-**Word count: 155.**
+**Word count: 149.**
 
 ---
 
-## Alternative — shorter (108 words)
+## Alternative — shorter (107 words)
 
 LLMs flatten everyone's writing toward the average voice of the internet. Kiln inverts that loop: a native macOS app that fine-tunes a local LLM on your own writing in twenty minutes, then exposes the trained voice as an MCP server callable by Claude.app.
 
@@ -24,11 +24,11 @@ Three classifiers ship inside Kiln — quality, preference, style — each disti
 
 Your corpus never leaves the laptop. Distilled judgment does. Claude.app writes in your voice without seeing your prompt.
 
-**Word count: 108.**
+**Word count: 107.**
 
 ---
 
-## Alternative — more emotional / narrative (172 words)
+## Alternative — more emotional / narrative (171 words)
 
 You write thousands of words a year. Emails, replies, drafts, social posts. Each one shapes how you sound. The more an LLM writes them for you, the more your written self drifts toward the average voice of the internet — someone else's training data, looped back into your inbox.
 
@@ -38,11 +38,11 @@ The judgment that makes the corpus clean enough to train on lives in three class
 
 The trained voice is exposed as an MCP server. Claude.app can call it. Your writing — your voice — is finally yours to deploy.
 
-**Word count: 172.**
+**Word count: 171.**
 
 ---
 
-## Alternative — more technical (165 words)
+## Alternative — more technical (154 words)
 
 Kiln is a native macOS app for fine-tuning a small local LLM on the user's own writing. It implements LoRA SFT over a 4-bit-quantized Qwen 2.5 (3B default) via MLX-LM, completing in ~20 minutes for a small corpus on Apple Silicon. The trained adapter is fused, converted to GGUF, registered in Ollama, and exposed via a Python MCP server (`mcp` SDK, port 7474, bearer auth) consumable by Claude.app.
 
@@ -50,7 +50,7 @@ Three classifiers — quality, preference, style — ship inside the app. Each w
 
 Built in five days. 38 PRs. 441 tests passing.
 
-**Word count: 165.**
+**Word count: 154.**
 
 ---
 
