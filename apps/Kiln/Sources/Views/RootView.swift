@@ -25,7 +25,8 @@ struct RootView: View {
         }
         .frame(minWidth: Kiln.Layout.minWindowWidth,
                minHeight: Kiln.Layout.minWindowHeight)
-        .preferredColorScheme(nil) // honor system; both modes ship via `Color.kiln`
+        // App-level `.preferredColorScheme(.light)` is set on the WindowGroup
+        // in `KilnApp.swift` — the design package is light-first.
     }
 }
 

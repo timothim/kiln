@@ -7,6 +7,12 @@ struct KilnApp: App {
     var body: some Scene {
         WindowGroup("Kiln") {
             RootView(model: model)
+                // The Claude Design package is light-first — warm cream paper,
+                // warm-brown foreground tiers, no dark variants specified.
+                // Pinning to `.light` keeps the paper aesthetic when macOS is
+                // in dark mode (otherwise the synthesized warm-dark variants
+                // read as a generic dark theme, not the design's intent).
+                .preferredColorScheme(.light)
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -28,6 +34,7 @@ struct KilnApp: App {
         // app even though the panel views, models, and tests existed.
         Settings {
             SettingsRoot(model: model)
+                .preferredColorScheme(.light)
         }
     }
 }
