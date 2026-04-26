@@ -9,6 +9,12 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            // Paper background — `--paper` `#F5F1EA` per DESIGN.md. The whole
+            // app sits on this warm cream canvas; cards and panels layer
+            // `--surface` / `--surface-2` / `--surface-sunken` on top.
+            Kiln.Palette.paper
+                .ignoresSafeArea()
+
             if model.projects.isEmpty {
                 EmptyDropView(model: model)
                     .transition(.opacity)
@@ -19,6 +25,7 @@ struct RootView: View {
         }
         .frame(minWidth: Kiln.Layout.minWindowWidth,
                minHeight: Kiln.Layout.minWindowHeight)
+        .preferredColorScheme(nil) // honor system; both modes ship via `Color.kiln`
     }
 }
 

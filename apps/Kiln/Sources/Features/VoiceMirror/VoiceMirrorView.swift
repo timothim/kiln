@@ -178,21 +178,31 @@ private struct VoiceMirrorColumn: View {
     private var isModelColumn: Bool { reflection.source != .userAnswer }
     private var isHighlighted: Bool { isHovered || isFocused || isPinned }
 
+    private var isUserTruth: Bool { reflection.source == .userAnswer }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+        VStack(alignment: .leading, spacing: Kiln.Space.s2) {
             header
             content
         }
-        .padding(Kiln.Space.m)
+        .padding(Kiln.Space.s4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
+            // User-truth column gets the slightly louder `surface-paper`
+            // surface (Post-it tier) so the eye returns to it after
+            // scanning the model columns. Model columns sit on plain
+            // `surface`.
+            RoundedRectangle(cornerRadius: Kiln.Radius.r3, style: .continuous)
+                .fill(isUserTruth ? Kiln.Palette.surfacePaper : Kiln.Palette.surface)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .strokeBorder(Kiln.Palette.firing.opacity(isPinned ? 0.45 : 0),
-                              lineWidth: 1)
+            RoundedRectangle(cornerRadius: Kiln.Radius.r3, style: .continuous)
+                .strokeBorder(
+                    isPinned
+                        ? Kiln.Palette.firing.opacity(0.45)
+                        : Kiln.Palette.hairline,
+                    lineWidth: 1
+                )
                 .animation(Kiln.Motion.microToggle, value: isPinned)
         }
         .onHover { hovering in
@@ -213,15 +223,22 @@ private struct VoiceMirrorColumn: View {
     }
 
     private var header: some View {
-        HStack(spacing: Kiln.Space.xs) {
-            Circle()
-                .fill(Color.primary.opacity(reflection.source.indicatorOpacity))
-                .frame(width: 6, height: 6)
-            Text(reflection.source.rawValue)
-                .font(Kiln.Font.label)
-                .kerning(0.44)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
+        HStack(spacing: Kiln.Space.s2) {
+            // Per design package: the kiln-noor "alive" eyebrow uses an
+            // EmberDot for the SFT+DPO column (the trained voice column).
+            // Other model columns get a graded grey identity dot.
+            if reflection.source == .sftPlusDpo {
+                EmberDot(size: 6)
+            } else {
+                Circle()
+                    .fill(Kiln.Palette.onSurface.opacity(reflection.source.indicatorOpacity))
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+            Text(reflection.source.rawValue.uppercased())
+                .font(Kiln.Font.eyebrow)
+                .kerning(0.4)
+                .foregroundStyle(Kiln.Palette.onSurface3)
             Spacer(minLength: 0)
             if isPinned {
                 Image(systemName: "pin.fill")
@@ -305,7 +322,11 @@ private struct VoiceMirrorColumn: View {
         guard isHighlighted else { return s }
         for phrase in reflection.signaturePhrases {
             if let range = s.range(of: phrase) {
-                s[range].backgroundColor = Kiln.Palette.firingWash
+                // Design package: signature-phrase highlights use
+                // `firing-wash-strong` (14% amber) — the louder of the
+                // two amber washes — paired with the firing foreground
+                // so the phrase reads as "this is your voice."
+                s[range].backgroundColor = Kiln.Palette.firingWashStrong
                 s[range].foregroundColor = Kiln.Palette.firing
             }
         }

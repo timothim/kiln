@@ -65,7 +65,7 @@ struct MCPServerSettingsView: View {
     let voiceName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.m) {
+        VStack(alignment: .leading, spacing: Kiln.Space.s4) {
             poweredByBadge
             description
             controlRow
@@ -73,21 +73,20 @@ struct MCPServerSettingsView: View {
         }
         .padding(Kiln.Space.l)
         .frame(minWidth: 520, idealWidth: 600)
+        .background(Kiln.Palette.paper)
     }
 
     private var poweredByBadge: some View {
-        HStack(spacing: Kiln.Space.xs) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.purple)
-                .accessibilityHidden(true)
+        HStack(spacing: Kiln.Space.s2) {
+            EmberDot(size: 7)
             VStack(alignment: .leading, spacing: 0) {
-                Text("Powered by Claude Opus 4.7")
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
+                Text("POWERED BY CLAUDE OPUS 4.7")
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
                 Text("Connect to Claude")
                     .font(Kiln.Font.title)
+                    .foregroundStyle(Kiln.Palette.onSurface)
             }
             Spacer(minLength: 0)
         }

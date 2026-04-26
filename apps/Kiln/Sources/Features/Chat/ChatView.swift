@@ -209,11 +209,7 @@ private struct ChatBubble: View {
                 Spacer(minLength: Kiln.Space.xl)
             }
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: Kiln.Space.xxs) {
-                Text(message.role == .user ? "You" : "Your model")
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.tertiary)
+                roleEyebrow
                 Group {
                     if message.content.isEmpty && message.role == .assistant {
                         // Streaming hasn't produced any tokens yet — show a
@@ -251,9 +247,34 @@ private struct ChatBubble: View {
             : "Your model replied: \(message.content)")
     }
 
+    /// Per design package: the assistant's eyebrow carries an `EmberDot`
+    /// for the user-facing "this is your trained voice, alive" signal.
+    /// User eyebrow is a quiet mono "YOU" — same eyebrow font as
+    /// elsewhere, no firing accent.
+    @ViewBuilder
+    private var roleEyebrow: some View {
+        if message.role == .assistant {
+            HStack(spacing: Kiln.Space.s2) {
+                EmberDot(size: 6)
+                Text("YOUR MODEL")
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
+            }
+        } else {
+            Text("YOU")
+                .font(Kiln.Font.eyebrow)
+                .kerning(0.4)
+                .foregroundStyle(Kiln.Palette.onSurface3)
+        }
+    }
+
+    /// User-side bubble sits on `surface-2` (slightly louder than card-fill,
+    /// the chat trip-line). Assistant bubble on `surface-sunken` so the
+    /// eye lands on the user's input first, then reads the response.
     private var bubbleFill: Color {
         message.role == .user
-            ? Color.primary.opacity(Kiln.Opacity.trackFill)
+            ? Kiln.Palette.surface2
             : Kiln.Palette.surfaceSunken
     }
 }

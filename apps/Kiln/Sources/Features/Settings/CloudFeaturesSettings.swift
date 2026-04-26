@@ -123,9 +123,9 @@ struct CloudFeaturesSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Kiln.Space.l) {
                 header
-                Divider().opacity(0.4)
+                Divider()
                 apiKeyRow
-                Divider().opacity(0.4)
+                Divider()
                 featuresSection
                 Spacer(minLength: 0)
                 disclosure
@@ -133,15 +133,21 @@ struct CloudFeaturesSettingsView: View {
             .padding(Kiln.Space.l)
         }
         .frame(width: 480)
+        .background(Kiln.Palette.paper)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
+        VStack(alignment: .leading, spacing: Kiln.Space.s2) {
+            Text("CLOUD FEATURES")
+                .font(Kiln.Font.eyebrow)
+                .kerning(0.4)
+                .foregroundStyle(Kiln.Palette.onSurface3)
             Text("Cloud features")
                 .font(Kiln.Font.title)
+                .foregroundStyle(Kiln.Palette.onSurface)
             Text("Opt in to features that send a small slice of your project to Anthropic. Off by default.")
                 .font(Kiln.Font.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Kiln.Palette.onSurface2)
         }
     }
 
@@ -181,11 +187,13 @@ struct CloudFeaturesSettingsView: View {
                 Text("No API key configured.").font(Kiln.Font.caption).foregroundStyle(.tertiary)
             }
         case .saved:
-            Label("Saved.", systemImage: "checkmark").font(Kiln.Font.caption).foregroundStyle(.green)
+            Label("Saved.", systemImage: "checkmark")
+                .font(Kiln.Font.caption)
+                .foregroundStyle(Kiln.Palette.ok)
         case .cleared:
-            Text("Key cleared.").font(Kiln.Font.caption).foregroundStyle(.secondary)
+            Text("Key cleared.").font(Kiln.Font.caption).foregroundStyle(Kiln.Palette.onSurface2)
         case .error(let message):
-            Text(message).font(Kiln.Font.caption).foregroundStyle(.red)
+            Text(message).font(Kiln.Font.caption).foregroundStyle(Kiln.Palette.danger)
         }
     }
 

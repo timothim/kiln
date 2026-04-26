@@ -74,16 +74,14 @@ struct GrowingModelPanelView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: Kiln.Space.s3) {
             Text("Growing Model")
                 .font(Kiln.Font.title)
+                .foregroundStyle(Kiln.Palette.onSurface)
             Spacer()
             if state == .inProgress {
-                Text("Step \(currentStep) · Epoch \(currentEpoch) of \(totalEpochs)")
-                    .font(Kiln.Font.numeric)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .animation(Kiln.Motion.standard, value: currentStep)
+                Chip(text: "iter \(currentStep)", isFiring: true)
+                    .accessibilityLabel("Iteration \(currentStep) of \(totalEpochs) total epochs")
             }
         }
     }
@@ -121,6 +119,15 @@ private struct GrowingModelPromptCard: View {
     let state: GrowingModelState
     let nextUpdateSeconds: Int
 
+    /// Per-card typewriter state. The design package's `growing` surface
+    /// spec calls for the previous completion to be erased right→left,
+    /// then the new completion to be typed in left→right at variable
+    /// cadence. The model owns the in-flight character cursor; the card
+    /// drives transitions on `sample.currentResponse` changes.
+    @State private var typewriter = TypewriterModel()
+    @State private var lastResponse: String? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: Kiln.Space.xs) {
             promptHeader
@@ -130,23 +137,30 @@ private struct GrowingModelPromptCard: View {
         .padding(Kiln.Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(Kiln.Opacity.cardFill))
+            RoundedRectangle(cornerRadius: Kiln.Radius.r3, style: .continuous)
+                .fill(Kiln.Palette.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Kiln.Radius.r3, style: .continuous)
+                .strokeBorder(Kiln.Palette.hairline, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)
+        .task(id: sample.currentResponse) {
+            await reactToResponseChange()
+        }
     }
 
     private var promptHeader: some View {
         HStack(alignment: .top, spacing: Kiln.Space.m) {
             VStack(alignment: .leading, spacing: Kiln.Space.xxs) {
-                Text("Prompt")
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .foregroundStyle(.tertiary)
+                Text("PROMPT")
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
                 Text(sample.prompt)
                     .font(Kiln.Font.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Kiln.Palette.onSurface)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -154,17 +168,55 @@ private struct GrowingModelPromptCard: View {
         }
     }
 
-    // 0.6s is intentionally slower than Kiln.Motion.standard (0.35s) for the
-    // emotional pacing of each new sample — the reveal should feel considered,
-    // not snappy. Call-site constant, not a Design System token.
+    /// Erase→type animation per the `growing` surface spec. When
+    /// `sample.currentResponse` changes:
+    ///   1. Old completion fades to opacity 0.3 (handled by typewriter
+    ///      already showing the old string)
+    ///   2. Old completion is erased right→left at 12ms/char
+    ///   3. New completion is typed left→right at variable cadence
+    /// Reduce Motion → final string set immediately, no animation.
     private var responseArea: some View {
-        Text(sample.currentResponse ?? "—")
-            .font(Kiln.Font.body)
-            .foregroundStyle(sample.currentResponse == nil ? .tertiary : .primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .contentTransition(.opacity)
-            .animation(Kiln.Motion.sampleReveal, value: sample.currentResponse)
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(typewriter.revealed.isEmpty && sample.currentResponse == nil
+                 ? "—"
+                 : typewriter.revealed)
+                .font(Kiln.Font.body)
+                .foregroundStyle(typewriter.revealed.isEmpty && sample.currentResponse == nil
+                                 ? Kiln.Palette.onSurface3
+                                 : Kiln.Palette.onSurface)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            TypewriterCursor(isVisible: typewriter.isTyping)
+        }
+    }
+
+    private func reactToResponseChange() async {
+        let newResponse = sample.currentResponse
+        defer { lastResponse = newResponse }
+
+        // Reduce Motion: jump straight to the final string.
+        if reduceMotion {
+            typewriter.setImmediate(newResponse ?? "")
+            return
+        }
+
+        // First-time arrival from nil → type in.
+        if lastResponse == nil, let newResponse {
+            await typewriter.reveal(newResponse, rate: 14)
+            return
+        }
+        // Cleared back to nil → erase to empty.
+        if newResponse == nil {
+            await typewriter.erase()
+            return
+        }
+        // Replaced — the design's "fade then erase right→left, type new
+        // left→right" pattern. We skip the fade-to-30%-opacity step
+        // because the erase is fast (12ms/char) and reads as continuous.
+        if let newResponse, lastResponse != newResponse {
+            await typewriter.erase()
+            await typewriter.reveal(newResponse, rate: 14)
+        }
     }
 
     @ViewBuilder

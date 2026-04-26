@@ -35,21 +35,20 @@ final class TrainingAdvisorPanelModel {
 struct TrainingAdvisorPanel: View {
     @State var model: TrainingAdvisorPanelModel
 
+    /// Per DESIGN.md `post-it-card` spec: the Training Advisor renders
+    /// as Opus's "annotation" stuck onto the user's training run.
+    /// Folded-corner top-right + surface-paper fill.
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-            advisorBadge(localMode: model.localMode, isWatching: model.isWatching)
-            advisorContent(
-                observations: model.observations.map {
-                    AdvisorObservationRow(iter: $0.iteration, content: $0.content)
-                },
-                isWatching: model.isWatching
-            )
-        }
-        .padding(Kiln.Space.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+        PostItCard {
+            VStack(alignment: .leading, spacing: Kiln.Space.s3) {
+                advisorBadge(localMode: model.localMode, isWatching: model.isWatching)
+                advisorContent(
+                    observations: model.observations.map {
+                        AdvisorObservationRow(iter: $0.iteration, content: $0.content)
+                    },
+                    isWatching: model.isWatching
+                )
+            }
         }
     }
 }
@@ -62,23 +61,19 @@ struct TrainingAdvisorInlinePanel: View {
     let observations: [TrainModel.AdvisorObservation]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-            advisorBadge(
-                localMode: observations.last?.modelID.lowercased().hasPrefix("qwen") ?? false,
-                isWatching: true
-            )
-            advisorContent(
-                observations: observations.map {
-                    AdvisorObservationRow(iter: $0.iter, content: $0.content)
-                },
-                isWatching: true
-            )
-        }
-        .padding(Kiln.Space.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: Kiln.Radius.card, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+        PostItCard {
+            VStack(alignment: .leading, spacing: Kiln.Space.s3) {
+                advisorBadge(
+                    localMode: observations.last?.modelID.lowercased().hasPrefix("qwen") ?? false,
+                    isWatching: true
+                )
+                advisorContent(
+                    observations: observations.map {
+                        AdvisorObservationRow(iter: $0.iter, content: $0.content)
+                    },
+                    isWatching: true
+                )
+            }
         }
     }
 }

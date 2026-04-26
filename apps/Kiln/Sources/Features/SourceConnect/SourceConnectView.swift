@@ -140,21 +140,20 @@ struct SourceConnectView: View {
             .padding(Kiln.Space.xl)
         }
         .frame(minWidth: 720)
+        .background(Kiln.Palette.paper)
     }
 
     private var poweredByBadge: some View {
-        HStack(spacing: Kiln.Space.xs) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.purple)
-                .accessibilityHidden(true)
+        HStack(spacing: Kiln.Space.s2) {
+            EmberDot(size: 7)
             VStack(alignment: .leading, spacing: 0) {
-                Text(badgeTitle)
-                    .font(Kiln.Font.label)
-                    .kerning(0.44)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
+                Text(badgeTitle.uppercased())
+                    .font(Kiln.Font.eyebrow)
+                    .kerning(0.4)
+                    .foregroundStyle(Kiln.Palette.onSurface3)
                 Text("Connect your sources")
                     .font(Kiln.Font.title)
+                    .foregroundStyle(Kiln.Palette.onSurface)
             }
             Spacer(minLength: 0)
         }
