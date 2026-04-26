@@ -315,7 +315,12 @@ def _build_cmd(
         "--verbose", "True",
     ]
     if adapter is not None:
-        cmd += ["--adapter-path", str(adapter)]
+        # mlx_lm.generate's ``--adapter-path`` wants the directory containing
+        # ``adapters.safetensors`` + ``adapter_config.json``. Callers
+        # routinely hand us the file itself (the train ``done.artifact``);
+        # resolve to the parent dir.
+        adapter_dir = adapter.parent if adapter.is_file() else adapter
+        cmd += ["--adapter-path", str(adapter_dir)]
     return cmd
 
 

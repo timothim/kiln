@@ -179,9 +179,15 @@ def _build_fuse_cmd(*, args: argparse.Namespace, fused_dir: Path) -> list[str]:
         base = [sys.executable, str(args.fuser_entry)]
     else:
         base = [sys.executable, "-m", args.fuser_module]
+    # mlx_lm.fuse's ``--adapter-path`` wants the directory containing
+    # ``adapters.safetensors`` + ``adapter_config.json``. Swift hands us
+    # the file itself (the train ``done.artifact``); resolve to the
+    # parent dir so fuse can find adapter_config.json.
+    adapter_arg = Path(args.adapter_path)
+    adapter_dir = adapter_arg.parent if adapter_arg.is_file() else adapter_arg
     return base + [
         "--model", args.model,
-        "--adapter-path", str(args.adapter_path),
+        "--adapter-path", str(adapter_dir),
         "--save-path", str(fused_dir),
     ]
 
