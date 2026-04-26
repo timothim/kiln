@@ -102,15 +102,19 @@ def run(args: argparse.Namespace) -> int:
     # ``adapters.safetensors`` at ``save-every`` milestones — it does not
     # auto-save the final state. With the default save-every=50 and a
     # small corpus (iters=10–40) the user gets nothing on disk and the
-    # downstream Sample / Export / Chat all 404. Cap save-every so we
-    # always produce 3 checkpoints minimum, plus a guaranteed last one.
-    effective_save_every = min(args.save_every, max(2, iters // 3))
-    runtime.log(
-        "save-every cadence",
-        requested=args.save_every,
-        effective=effective_save_every,
-        iters=iters,
-    )
+    # downstream Sample / Export / Chat all 404. Override only when the
+    # caller's save-every would produce zero checkpoints.
+    if args.save_every > iters:
+        effective_save_every = max(2, iters // 3)
+        runtime.log(
+            "save-every cadence",
+            requested=args.save_every,
+            effective=effective_save_every,
+            iters=iters,
+            note="capped to ensure checkpoints fire on a small run",
+        )
+    else:
+        effective_save_every = args.save_every
 
     # (5) YAML config (rank/alpha/keys are YAML-only in mlx-lm 0.21.*)
     config_path = run_dir / "lora_config.yaml"

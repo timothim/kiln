@@ -89,18 +89,32 @@ struct LogsPanel: View {
         }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: Kiln.Space.xs) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text("Log entries appear here once training starts.")
-                .font(Kiln.Font.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+        if isLive {
+            // Training is running but the first event hasn't arrived yet —
+            // give the user a liveness signal instead of the static placeholder.
+            VStack(spacing: Kiln.Space.xs) {
+                ProgressView().controlSize(.small)
+                Text("Training starting…")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, Kiln.Space.xl)
+        } else {
+            VStack(spacing: Kiln.Space.xs) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("Log entries appear here once training starts.")
+                    .font(Kiln.Font.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, Kiln.Space.xl)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, Kiln.Space.xl)
     }
 
     private func row(for entry: TrainModel.LogLine) -> some View {

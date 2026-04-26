@@ -125,7 +125,7 @@ private func advisorContent(observations: [AdvisorObservationRow], isWatching: B
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(observations.suffix(8).enumerated()), id: \.offset) { _, obs in
                 HStack(alignment: .top, spacing: Kiln.Space.xs) {
-                    Text("iter \(obs.iter)")
+                    Text("iter \(obs.iter, format: .number)")
                         .font(Kiln.Font.label)
                         .kerning(0.44)
                         .textCase(.uppercase)

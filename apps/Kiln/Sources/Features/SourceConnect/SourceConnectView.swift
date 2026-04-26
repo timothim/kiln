@@ -238,42 +238,59 @@ struct SourceConnectView: View {
                 .kerning(0.44)
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(model.log) { entry in
-                    HStack(alignment: .top, spacing: Kiln.Space.xs) {
-                        Text(symbol(for: entry.kind))
-                            .font(Kiln.Font.label)
-                            .foregroundStyle(color(for: entry.kind))
-                            .accessibilityHidden(true)
-                        Text(entry.text)
-                            .font(Kiln.Font.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+            // Cap visible height + tail to last 60 entries so the panel
+            // never grows unbounded on multi-source ingest runs.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        let entries = Array(model.log.suffix(60))
+                        ForEach(entries) { entry in
+                            HStack(alignment: .top, spacing: Kiln.Space.xs) {
+                                Text(symbol(for: entry.kind))
+                                    .font(Kiln.Font.label)
+                                    .foregroundStyle(color(for: entry.kind))
+                                    .accessibilityHidden(true)
+                                Text(entry.text)
+                                    .font(Kiln.Font.caption)
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .id(entry.id)
+                        }
+                        if model.log.isEmpty {
+                            Text("(empty — start ingestion to see live updates)")
+                                .font(Kiln.Font.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(Kiln.Space.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 240)
+                .background {
+                    RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
+                }
+                .onChange(of: model.log.count) { _, _ in
+                    if let last = model.log.last {
+                        withAnimation(Kiln.Motion.standard) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
-                if model.log.isEmpty {
-                    Text("(empty — start ingestion to see live updates)")
-                        .font(Kiln.Font.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(Kiln.Space.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: Kiln.Radius.control, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
             }
         }
     }
 
     private func symbol(for kind: SourceConnectModel.LogEntry.Kind) -> String {
+        // DESIGN.md §Typography: "No emoji" — typographic shapes only.
         switch kind {
-        case .thinking: return "🤔"
-        case .spawn:    return "▶"
-        case .sample:   return "•"
-        case .decision: return "✓"
-        case .completion: return "✔︎"
-        case .error:    return "⚠"
+        case .thinking:   return "◇"
+        case .spawn:      return "▸"
+        case .sample:     return "·"
+        case .decision:   return "→"
+        case .completion: return "✓"
+        case .error:      return "!"
         }
     }
 

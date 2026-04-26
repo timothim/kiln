@@ -257,30 +257,46 @@ private struct VoiceMirrorColumn: View {
 
     @ViewBuilder
     private var modelContent: some View {
-        switch reflection.state {
-        case .idle:
-            Text("—")
-                .font(Kiln.Font.body)
-                .foregroundStyle(.tertiary)
-        case .generating:
-            SkeletonLines()
-                .padding(.vertical, Kiln.Space.xxs)
-        case .done:
-            Text(attributedContinuation)
-                .font(Kiln.Font.body)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(Kiln.Motion.microToggle, value: isHighlighted)
-        case let .failed(message):
-            VStack(alignment: .leading, spacing: Kiln.Space.xs) {
-                Text(message)
-                    .font(Kiln.Font.caption)
-                    .foregroundStyle(.secondary)
-                Button("Retry", action: onRetry)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+        // Cross-fade between states so a regenerate doesn't snap-cut from the
+        // old continuation to the skeleton.
+        Group {
+            switch reflection.state {
+            case .idle:
+                Text("—")
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(.tertiary)
+            case .generating:
+                SkeletonLines()
+                    .padding(.vertical, Kiln.Space.xxs)
+            case .done:
+                Text(attributedContinuation)
+                    .font(Kiln.Font.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(Kiln.Motion.microToggle, value: isHighlighted)
+            case let .failed(message):
+                VStack(alignment: .leading, spacing: Kiln.Space.xs) {
+                    Text(message)
+                        .font(Kiln.Font.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Retry", action: onRetry)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
             }
+        }
+        .id(stateIdentity)
+        .transition(.opacity)
+        .animation(Kiln.Motion.standard, value: stateIdentity)
+    }
+
+    private var stateIdentity: String {
+        switch reflection.state {
+        case .idle: return "idle"
+        case .generating: return "generating"
+        case .done: return "done"
+        case .failed: return "failed"
         }
     }
 
