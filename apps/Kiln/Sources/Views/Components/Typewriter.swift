@@ -139,7 +139,7 @@ struct TypewriterCursor: View {
 
     private func startBlink() {
         guard !reduceMotion else { return }
-        withAnimation(.easeInOut(duration: 0.54).repeatForever(autoreverses: true)) {
+        withAnimation(Kiln.Motion.cursorBlink) {
             blinkPhase = true
         }
     }

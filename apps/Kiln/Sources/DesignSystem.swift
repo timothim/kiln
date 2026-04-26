@@ -293,6 +293,12 @@ enum Kiln {
         static let ember:    Animation = .easeInOut(duration: 1.8)
             .repeatForever(autoreverses: true)
 
+        /// 540ms — typewriter cursor blink cadence. Independent of the
+        /// kindled curve (a blink is a metronome, not a transition); kept
+        /// here so call sites don't reach for an inline `.easeInOut(duration:)`.
+        static let cursorBlink: Animation = .easeInOut(duration: 0.54)
+            .repeatForever(autoreverses: true)
+
         // MARK: - Source-stability aliases (legacy names → new timings)
 
         static let standard: Animation = kind            // 350ms kindled

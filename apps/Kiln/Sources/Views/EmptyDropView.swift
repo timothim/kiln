@@ -55,17 +55,19 @@ struct EmptyDropView: View {
                     .strokeBorder(
                         Kiln.Palette.firing,
                         style: StrokeStyle(
-                            lineWidth: isTargeted ? 1.5 : 1.5,
+                            // Border thickens slightly on targeted state so it
+                            // reads as "armed" — matches the design package's
+                            // dashed→solid transition at the same moment.
+                            lineWidth: isTargeted ? 2.0 : 1.5,
                             dash: isTargeted ? [] : [6, 4]
                         )
                     )
             }
             // Corner glyph — subtle ember pulse top-right per design spec.
+            // Doesn't carry its own scaleEffect: the ZStack scales as one
+            // unit, otherwise the dot would compound to ~1.08x on targeted.
             EmberDot(size: 7)
                 .padding(Kiln.Space.s4)
-
-            .scaleEffect(isTargeted ? 1.04 : 1.0)
-            .animation(Kiln.Motion.kind, value: isTargeted)
         }
         .scaleEffect(isTargeted ? 1.04 : 1.0)
         .animation(Kiln.Motion.kind, value: isTargeted)
